@@ -9,5 +9,5 @@
   },
   "license": "OSL-3.0",
   "keywords": ["cursor", "plugin", "magento2", "hyva", "hyvä", "alpine", "tailwind", "cms", "magento"],
-  "logo": "assets/hyva-ai-tools.png"
+  "logo": "assets/hyva-ai-tools.svg"
 }
