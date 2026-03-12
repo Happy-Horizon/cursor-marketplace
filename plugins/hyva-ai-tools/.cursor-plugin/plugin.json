@@ -1,0 +1,13 @@
+{
+  "name": "hyva-ai-tools",
+  "displayName": "Hyvä AI Tools",
+  "version": "0.1.0",
+  "description": "AI-powered skills for Magento 2 development with Hyvä Theme. Covers Alpine.js components, CMS components, child theme setup, module scaffolding, Playwright tests, and responsive image rendering.",
+  "author": {
+    "name": "Lewis van Cken",
+    "url": "https://github.com/lewisvoncken/hyva-ai-tools"
+  },
+  "license": "OSL-3.0",
+  "keywords": ["cursor", "plugin", "magento2", "hyva", "hyvä", "alpine", "tailwind", "cms", "magento"],
+  "logo": "assets/hyva-ai-tools.png"
+}

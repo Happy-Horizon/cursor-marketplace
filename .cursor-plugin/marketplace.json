@@ -1,0 +1,19 @@
+{
+  "name": "happyhorizon-cursor-marketplace",
+  "owner": {
+    "name": "Happy Horizon",
+    "email": "hello@happyhorizon.com"
+  },
+  "metadata": {
+    "description": "A curated set of AI plugins for Happy Horizon teams — covering Magento 2 Hyvä Theme development and beyond.",
+    "version": "0.1.0",
+    "pluginRoot": "plugins"
+  },
+  "plugins": [
+    {
+      "name": "hyva-ai-tools",
+      "source": "hyva-ai-tools",
+      "description": "AI-powered skills for Magento 2 development with Hyvä Theme — Alpine components, CMS components, child themes, modules, Playwright tests, and more"
+    }
+  ]
+}
