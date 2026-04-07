@@ -1,0 +1,101 @@
+---
+description: Guidelines for package development workflows, code conventions, and version management in Horizon Storefront packages
+globs: packages/**,package.json,lerna.json,turbo.json,.prettierrc.js,tsconfig.template.json
+alwaysApply: false
+---
+
+# Package Development Rules
+
+## Overview
+
+This document covers development workflows, code conventions, and version management for packages in the `packages/` directory. For project structure and naming conventions, see `project-structure.mdc`.
+
+## Development Workflow
+
+### Dependency Management
+
+- Use **Yarn workspaces** for dependency management
+- Workspaces defined in root `package.json`
+- Run `yarn install` at root to install all workspace dependencies
+
+### Build Orchestration
+
+- Use **Turbo** for build orchestration (`turbo.json`)
+- Run `yarn build` for production builds (runs `prebuild` which generates tsconfig)
+- Run `yarn dev` for development (runs `predev` which generates tsconfig with env vars)
+- Turbo handles parallel execution and caching
+
+### TypeScript Configuration
+
+- Apps use `tsconfig.template.json` with environment variable substitution
+- Environment variables (`FRAMEWORK`, `FRAMEWORK_CMS`, `UI_PACKAGE`) are substituted via `envsub`
+- Path mappings configured to support both local development and client installation contexts
+
+### Code Quality
+
+- **Linting**: Run `yarn lint` (uses ESLint with Next.js config)
+- **Formatting**: Run `yarn format` (uses Prettier)
+- **Pre-commit**: Husky hooks run `lint-staged` before commits
+- **Prettier Config**: 4-space tabs, single quotes, trailing commas, import sorting
+
+## Package Structure
+
+### Package Configuration
+
+- Each package has its own `package.json` with `@happyhorizon/*` naming
+- Packages include `publishConfig` pointing to `https://npm.happyhorizon.dev/` registry
+- Version management uses **Lerna** with independent versioning (`lerna.json`)
+
+### Package Files
+
+- Packages export their public API through `package.json` `files` field
+- Side effects declared in `sideEffects` field (important for tree-shaking)
+
+## Code Conventions
+
+### Formatting
+
+- **Indentation**: 4 spaces (tabWidth: 4)
+- **Quotes**: Single quotes
+- **Trailing Commas**: Always (`trailingComma: 'all'`)
+- **Semicolons**: Required
+
+### Import Sorting
+
+- Use `@ianvs/prettier-plugin-sort-imports` plugin
+- Imports automatically sorted according to Prettier config
+- Type imports separated from value imports
+
+### Linting
+
+- ESLint configured with Next.js preset
+- Additional rules via `eslint.config.mjs`
+- Max warnings set to 0 for strict enforcement
+
+## Version Management
+
+### Lerna Configuration
+
+- Independent versioning (`"version": "independent"` in `lerna.json`)
+- Each package can have its own version
+- Version bumping handled via Lerna commands
+
+### Publishing
+
+- Packages publish to `https://npm.happyhorizon.dev/` registry
+- Publish configuration in each package's `package.json`
+
+## Documentation References
+
+- **Horizon Storefront Developer Docs**: https://devdocs.experius.nl/
+- **Project README**: See root `README.md` for installation and usage
+- **Theming Guide**: https://devdocs.experius.nl/theming/
+- **Component Overwrites**: https://devdocs.experius.nl/theming/ui-component-overwrites/
+- **Framework Providers**: https://devdocs.experius.nl/framework-providers/
+
+## Key Principles
+
+1. **Package Development**: Develop packages with awareness they will become `@happyhorizon/*` when published
+2. **Consistent Conventions**: Follow established code style and import patterns across all packages
+3. **Public API**: Design packages with clear public APIs exported through `package.json` `files` field
+4. **Tree-shaking**: Declare side effects properly for optimal bundle sizes

@@ -19,6 +19,11 @@
       "name": "magento2-development",
       "source": "magento2-development",
       "description": "Rules and best practices for Magento 2 development"
+    },
+    {
+      "name": "horizon-storefront",
+      "source": "horizon-storefront",
+      "description": "Placeholder rules for Horizon storefront development — extend with Hyvä, Magento, and frontend guidance"
     }
   ]
 }

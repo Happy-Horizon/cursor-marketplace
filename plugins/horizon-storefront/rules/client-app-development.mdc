@@ -1,0 +1,368 @@
+---
+description: Guidelines for client-specific code development in apps/ directories, component overwrites, theme structure, and framework provider extensions
+globs: apps/**/*
+---
+
+# Client App Development Rules
+
+## Overview
+
+Apps in the `apps/` directory (`apps/magento`, `apps/bigcommerce`, `apps/medusa`) are boilerplates for client projects. These apps can overwrite and extend framework providers and UI library components through the theme structure and path resolution system.
+
+## Apps Directory Structure
+
+### Basic Structure
+
+- **Pages**: `src/pages/` - Next.js file-based routing pages
+- **Theme**: `src/theme/<themename>/` - Theme-specific overwrites and customizations
+- **Framework**: `src/framework/` - Framework provider extensions
+- **Types**: `src/types/` - Client-specific type definitions
+- **Cypress**: `src/cypress/` - E2E test files
+
+### Theme Structure
+
+```
+src/theme/
+  └── <themename>/
+      ├── ui/                    # UI component overwrites
+      ├── storefront-app/        # Storefront app component overwrites
+      ├── styles/                # Theme-specific styles
+      │   ├── globals.scss
+      │   └── variables.scss
+      ├── translations/          # Theme translations
+      └── custom/                # Custom components/hooks/pages
+          ├── components/
+          ├── hooks/
+          └── pages/
+```
+
+## Overwrite Patterns
+
+### Component Overwrites
+
+- **Location**: Place component overwrites in `src/theme/<themename>/` matching the original package structure
+- **Example**: To overwrite `@happyhorizon/ui/components/Button`, create `src/theme/base/ui/components/Button/index.tsx`
+- **Path Resolution**: TypeScript path mappings prioritize theme overwrites over packages
+
+### Framework Provider Overwrites
+
+- **Location**: Extend framework providers in `src/framework/` directory
+- **Commerce Config**: Modify `config/commerce.config.json` for commerce-specific settings
+- **Mappers**: Overwrite data transformation mappers in `src/framework/`
+- **Handlers**: Extend internal API handlers in `src/framework/`
+
+### UI Component Overwrites
+
+- **Structure**: Follow the same directory structure as `@happyhorizon/ui` packages
+- **SCSS Overwrites**: Modify component SCSS files directly or use CSS classification for child components
+- **Full Overwrite**: Copy entire component to theme directory and modify as needed
+- **Partial Overwrite**: Import from `@parent/ui/*` and extend/wrap components
+
+### Using Horizon Storefront CLI
+
+- **Tool**: Use `hz` CLI for creating overwrites
+- **Documentation**: https://devdocs.experius.nl/getting-started/recommended-tools-and-tips/horizon-storefront-cli-hz/
+- **Commands**:
+    - Create brand new files
+    - Create component overwrites
+    - Follow folder aliases defined in `hzconfig.json`
+    - Converter commands available for migrating code
+
+## Theme Configuration
+
+### Theme Config File
+
+- **Location**: `config/theme.config.json`
+- **Structure**: JSON object with theme names as keys
+- **Parent Theme**: Use `parent` property for theme inheritance
+- **Settings**: Configure theme-specific settings in `settings` object
+
+### Theme Inheritance
+
+```json
+{
+    "base": {
+        "parent": "",
+        "settings": {
+            /* base theme settings */
+        }
+    },
+    "custom": {
+        "parent": "base",
+        "settings": {
+            /* custom theme settings */
+        }
+    }
+}
+```
+
+### Theme Settings
+
+Common settings in `theme.config.json`:
+
+- `breadcrumbAsBackButton`: Boolean for breadcrumb behavior
+- `breakpoints`: Responsive breakpoint configuration
+- `category.layout`: Category page layout blocks
+- `productDetail.layout`: Product detail page layout blocks
+- `checkout.*`: Checkout flow configuration
+- `search.autocomplete`: Search autocomplete settings
+- `revalidate`: ISR revalidation time
+- And many more (see full config in `apps/*/config/theme.config.json`)
+
+## Import Resolution in Apps
+
+### Path Mapping Priority
+
+TypeScript path mappings resolve imports in this order:
+
+1. **Theme Overwrites**: `./src/theme/base/*` (highest priority)
+2. **Local Packages**: `../../packages/*` (monorepo development)
+3. **Published Packages**: `../../node_modules/@happyhorizon/*` (fallback)
+
+### Example Path Mappings
+
+```json
+{
+    "@happyhorizon/ui/*": [
+        "./src/theme/base/ui/*", // Theme overwrite (first)
+        "../../packages/ui-${UI_PACKAGE}/*", // Local package
+        "../../node_modules/@happyhorizon/ui-${UI_PACKAGE}/*", // Published
+        "../../packages/ui/*", // Fallback local
+        "../../node_modules/@happyhorizon/ui/*" // Fallback published
+    ],
+    "@theme/*": ["./src/theme/base/*"] // Theme alias
+}
+```
+
+### Import Aliases
+
+- `@happyhorizon/*` - Resolves to packages with theme overwrite priority
+- `@parent/*` - Resolves to original packages (bypasses theme overwrites)
+- `@theme/*` - Direct access to theme directory
+
+## Framework Provider Extensions
+
+### Framework Overwrite Pattern
+
+Framework providers can be overwritten in `src/framework/` directory. The path resolution system allows you to:
+
+- Overwrite framework code by placing files in `src/framework/`
+- Import the original framework using either the `-original` suffix alias or the actual package name
+
+### Import Patterns for Framework Overwrites
+
+Three import patterns are available:
+
+1. **`@happyhorizon/commerce-framework/*`** - Resolves with overwrite priority
+
+    - First checks `./src/framework/*` (your overwrites)
+    - Falls back to original packages if overwrite doesn't exist
+    - Use this for normal imports that should respect overwrites
+
+2. **`@happyhorizon/commerce-framework-original/*`** - Bypasses overwrites via alias
+
+    - Always resolves to original package (`packages/commerce/frameworks/${FRAMEWORK}/*`)
+    - Use this when you need to import the original implementation via alias
+
+3. **`@happyhorizon/commerce-framework-{FRAMEWORK}/*`** - Direct package import
+    - Direct import from actual package name (e.g., `@happyhorizon/commerce-framework-magento`)
+    - Always bypasses overwrites since it's a direct package import
+    - Use this when you want to explicitly import from the specific framework package
+
+Same pattern applies for CMS frameworks:
+
+- `@happyhorizon/cms-framework/*` - With overwrite priority
+- `@happyhorizon/cms-framework-original/*` - Original package via alias
+- `@happyhorizon/cms-framework-{FRAMEWORK_CMS}/*` - Direct package import (e.g., `@happyhorizon/cms-framework-storyblok`)
+
+### Commerce Framework Extensions
+
+- **Location**: `src/framework/`
+- **Commerce Config**: `config/commerce.config.json`
+- **Mappers**: Data transformation functions
+- **Handlers**: Internal API route handlers
+- **Types**: Framework-specific type extensions
+
+### Extending Providers
+
+#### Example: Extending a Provider
+
+```typescript
+// src/framework/commerce.ts
+// Option 1: Import original using -original suffix alias
+import { CommerceProvider } from '@happyhorizon/commerce-framework-original/commerce';
+
+// Option 2: Import directly from actual package name (e.g., for Magento app)
+// import { CommerceProvider } from '@happyhorizon/commerce-framework-magento/commerce';
+
+export const CommerceProviderExtended = (props) => {
+  // Extend or wrap the original provider
+  return <CommerceProvider {...props} customProp="value" />;
+};
+```
+
+#### Example: Overwriting a Mapper
+
+```typescript
+// src/framework/mappers/product.ts
+// Option 1: Import original mapper using -original alias
+
+import { mapProduct as mapProductOriginal } from '@happyhorizon/commerce-framework-original/mappers/product';
+
+// Option 2: Import directly from actual package name
+// import { mapProduct as mapProductOriginal } from '@happyhorizon/commerce-framework-magento/mappers/product';
+
+export const mapProduct = (product) => {
+    // Get original mapping
+    const mapped = mapProductOriginal(product);
+
+    // Add custom fields
+    return {
+        ...mapped,
+        customField: product.customAttribute,
+    };
+};
+```
+
+#### Example: Overwriting a Handler
+
+```typescript
+// src/framework/handlers/cart.ts
+// Option 1: Import original handler using -original alias
+
+import { getCart as getCartOriginal } from '@happyhorizon/commerce-framework-original/handlers/cart';
+
+// Option 2: Import directly from actual package name
+// import { getCart as getCartOriginal } from '@happyhorizon/commerce-framework-magento/handlers/cart';
+
+export const getCart = async (req, res) => {
+    // Call original handler
+    const cart = await getCartOriginal(req, res);
+
+    // Add custom logic
+    return {
+        ...cart,
+        customData: 'value',
+    };
+};
+```
+
+### Path Resolution for Framework Overwrites
+
+TypeScript path mappings resolve framework imports in this order:
+
+**For `@happyhorizon/commerce-framework/*`:**
+
+1. `./src/framework/*` (your overwrites - highest priority)
+2. `../../packages/commerce/frameworks/${FRAMEWORK}/*` (local package)
+3. `../../node_modules/@happyhorizon/commerce-framework-${FRAMEWORK}/*` (published)
+
+**For `@happyhorizon/commerce-framework-original/*`:**
+
+1. `../../packages/commerce/frameworks/${FRAMEWORK}/*` (local package)
+2. `../../node_modules/@happyhorizon/commerce-framework-${FRAMEWORK}/*` (published)
+3. **Never checks `src/framework/*`** - always uses original
+
+**For `@happyhorizon/commerce-framework-{FRAMEWORK}/*` (direct package import):**
+
+1. Direct import from `node_modules/@happyhorizon/commerce-framework-{FRAMEWORK}/*` or local package
+2. **Never checks `src/framework/*`** - always uses original package
+3. Example: `@happyhorizon/commerce-framework-magento/*` directly imports from the Magento framework package
+
+### Best Practices
+
+- **Use `-original` suffix alias** or **direct package name** when you need to import the original implementation
+- **Direct package import** (`@happyhorizon/commerce-framework-magento`) is more explicit and framework-specific
+- **`-original` alias** is framework-agnostic and works with any framework via environment variables
+- **Place overwrites** in `src/framework/` matching the original package structure
+- **Extend rather than replace** - Import original and wrap/extend functionality
+- **Maintain API compatibility** - Keep function signatures consistent with originals
+- **Document overwrites** - Comment why and what was changed
+
+## Client Customization Best Practices
+
+### Code Organization
+
+- **Keep client-specific code in `apps/` directories**, not in `packages/`
+- **Use theme inheritance** via `parent` property in `theme.config.json`
+- **Overwrite components** rather than modifying packages directly
+- **Document customizations** in client project README or documentation
+
+### Component Overwrites
+
+- **Prefer partial overwrites**: Import from `@parent/ui/*` and extend
+- **Full overwrites**: Only when significant changes needed
+- **Maintain API compatibility**: Keep component props/interfaces consistent
+- **Test overwrites**: Ensure overwrites work with package updates
+
+### Style Customization
+
+- **Global Styles**: `src/theme/<themename>/styles/globals.scss`
+- **Variables**: `src/theme/<themename>/styles/variables.scss`
+- **Component Styles**: Overwrite component SCSS files in theme directory
+- **CSS Classification**: Use classification for child component styling
+
+### Code Conventions
+
+- **Follow same conventions** as packages (Prettier, ESLint)
+- **Import order**: Follow Prettier import sorting rules
+- **TypeScript**: Use strict typing where possible
+- **Documentation**: Comment complex customizations
+
+## File Creation and Overwrites
+
+### Using Horizon Storefront CLI (`hz`)
+
+- **Create overwrites**: `hz create overwrite <component-path>`
+- **Create new files**: `hz create file <file-path>`
+- **Follow aliases**: Uses folder aliases from `hzconfig.json`
+- **Migration**: Converter commands available for code migration
+
+### Manual Overwrite Creation
+
+1. Identify component to overwrite in `@happyhorizon/*` package
+2. Create matching directory structure in `src/theme/<themename>/`
+3. Copy component file(s) to theme directory
+4. Modify as needed
+5. Import will automatically resolve to theme version
+
+## Translation Management
+
+### Theme Translations
+
+- **Location**: `src/theme/<themename>/translations/`
+- **Format**: JSON files per locale (`en_US.json`, `nl_NL.json`, etc.)
+- **TypeScript**: Type definitions in `translations/*.ts`
+- **Index**: Export translations via `translations/index.ts`
+
+## Testing Client Customizations
+
+### E2E Testing
+
+- **Location**: `src/cypress/`
+- **Selectors**: Define in `src/cypress/fixtures/selectors/`
+- **Tests**: Write in `src/cypress/e2e/`
+- **Run**: `yarn test` or `yarn test:open`
+
+### Component Testing
+
+- Test overwritten components in isolation
+- Ensure compatibility with package updates
+- Test theme inheritance behavior
+
+## Documentation References
+
+- **Horizon Storefront Developer Docs**: https://devdocs.experius.nl/
+- **Theming Guide**: https://devdocs.experius.nl/theming/
+- **Component Overwrites**: https://devdocs.experius.nl/theming/ui-component-overwrites/
+- **Framework Providers**: https://devdocs.experius.nl/framework-providers/
+- **Horizon Storefront CLI**: https://devdocs.experius.nl/getting-started/recommended-tools-and-tips/horizon-storefront-cli-hz/
+
+## Key Principles
+
+1. **Theme-First Approach**: Use theme structure for all client customizations
+2. **Inheritance**: Leverage theme inheritance to reduce duplication
+3. **Package Integrity**: Never modify packages directly; always use overwrites
+4. **Path Resolution**: Understand import resolution priority for debugging
+5. **Documentation**: Document all customizations for maintainability
+6. **Update Compatibility**: Design overwrites to survive package updates

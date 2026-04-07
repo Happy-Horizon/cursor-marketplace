@@ -1,0 +1,156 @@
+---
+description: Global Horizon Storefront project structure, package naming conventions, and import resolution patterns that apply across the entire monorepo
+alwaysApply: true
+---
+
+# Horizon Storefront Project Structure
+
+## Overview
+
+Horizon Storefront is a monorepo containing packages developed in `packages/` that are published as `@happyhorizon/*` scoped packages. When installed in client projects, these packages are available in `node_modules/@happyhorizon/`.
+
+## Project Structure Contexts
+
+### Monorepo Development Context
+
+In the Horizon Storefront monorepo, packages are developed locally:
+
+- **`packages/`** - Source packages developed in the monorepo
+
+    - `packages/ui` - UI component library
+    - `packages/ui-tailwind` - Tailwind-based UI components
+    - `packages/commerce/core` - Core commerce functionality
+    - `packages/commerce/frameworks/*` - Framework-specific implementations (magento, medusa, bigcommerce)
+    - `packages/commerce/types` - TypeScript type definitions
+    - `packages/commerce/utils` - Utility functions
+    - `packages/commerce/swr` - SWR hooks for data fetching
+    - `packages/commerce/router` - Routing utilities
+    - `packages/storefront/app` - Storefront application components
+    - `packages/storefront/app-tailwind` - Tailwind-based storefront app
+    - `packages/cms/frameworks/*` - CMS framework integrations (storyblok, payloadcms)
+
+- **`apps/`** - Client project boilerplates (for development/testing)
+    - `apps/magento` - Magento framework boilerplate
+    - `apps/bigcommerce` - BigCommerce framework boilerplate
+    - `apps/medusa` - Medusa framework boilerplate
+
+### Client Project Installation Context
+
+When installed in client projects (outside the monorepo), packages are installed via npm:
+
+- **`node_modules/@happyhorizon/`** - Published packages installed from npm registry
+    - `node_modules/@happyhorizon/ui` - UI component library
+    - `node_modules/@happyhorizon/commerce-core` - Core commerce functionality
+    - `node_modules/@happyhorizon/commerce-framework-magento` - Magento framework implementation
+    - `node_modules/@happyhorizon/commerce-framework-medusa` - Medusa framework implementation
+    - `node_modules/@happyhorizon/commerce-framework-bigcommerce` - BigCommerce framework implementation
+    - `node_modules/@happyhorizon/storefront-app` - Storefront application components
+    - And other published `@happyhorizon/*` packages
+
+**Important**: Client projects do NOT have a `packages/` directory. All `@happyhorizon/*` packages are installed in `node_modules/@happyhorizon/` via npm/yarn.
+
+### Package Publishing
+
+- Packages are published to `https://npm.happyhorizon.dev/` registry
+- Client projects install packages via `yarn add @happyhorizon/ui` or `npm install @happyhorizon/ui`
+- Client projects only have access to published `@happyhorizon/*` packages from npm registry
+
+## Package Naming Convention
+
+### Local Development → Published Package
+
+- `packages/ui` → `@happyhorizon/ui`
+- `packages/commerce/core` → `@happyhorizon/commerce-core`
+- `packages/commerce/frameworks/magento` → `@happyhorizon/commerce-framework-magento`
+- `packages/storefront/app` → `@happyhorizon/storefront-app`
+
+### Naming Pattern
+
+- Package names follow pattern: `@happyhorizon/{package-name}` where directory slashes are replaced with hyphens
+- Example: `packages/commerce/frameworks/magento` becomes `@happyhorizon/commerce-framework-magento`
+
+## Import Patterns
+
+### Path Resolution Priority
+
+TypeScript path mappings resolve imports differently depending on context:
+
+**In Monorepo Apps (`apps/*`):**
+
+1. **Theme Overwrites**: `./src/theme/base/*` (highest priority)
+2. **Local Packages**: `../../packages/*` (monorepo development)
+3. **Published Packages**: `../../node_modules/@happyhorizon/*` (fallback)
+
+**In Client Projects:**
+
+1. **Theme Overwrites**: `./src/theme/base/*` (highest priority)
+2. **Published Packages**: `node_modules/@happyhorizon/*` (only option - no local packages)
+
+### Import Order (Prettier Configuration)
+
+Follow the import order defined in `.prettierrc.js`:
+
+1. Type imports (`<TYPES>`)
+2. React imports
+3. Next.js imports
+4. Third-party modules
+5. `@happyhorizon/*` packages (non-CSS)
+6. `@parent/*` aliases
+7. `@theme/*` aliases
+8. CSS/SCSS imports (same order as above)
+
+### Import Aliases
+
+- `@happyhorizon/*` - Resolves to packages with theme overwrite priority (in apps)
+- `@parent/*` - Resolves to original packages (bypasses theme overwrites)
+- `@theme/*` - Direct access to theme directory
+
+### Example Import Resolution
+
+#### In Monorepo Apps (`apps/magento`)
+
+```typescript
+import { Component } from '@happyhorizon/ui/components/Button';
+
+// Resolution order in monorepo:
+// 1. ./src/theme/base/ui/components/Button (theme overwrite)
+// 2. ../../packages/ui-${UI_PACKAGE}/components/Button (local package)
+// 3. ../../node_modules/@happyhorizon/ui-${UI_PACKAGE}/components/Button (published)
+// 4. ../../packages/ui/components/Button (fallback local)
+// 5. ../../node_modules/@happyhorizon/ui/components/Button (fallback published)
+```
+
+#### In Client Projects
+
+```typescript
+import { Component } from '@happyhorizon/ui/components/Button';
+
+// Resolution order in client project:
+// 1. ./src/theme/base/ui/components/Button (theme overwrite)
+// 2. node_modules/@happyhorizon/ui/components/Button (published package - only option)
+// Note: No packages/ directory exists in client projects
+```
+
+## Key Principles
+
+1. **Dual Context Awareness**:
+
+    - In monorepo: Packages are in `packages/` directory
+    - In client projects: Packages are in `node_modules/@happyhorizon/` directory
+    - Code in `packages/` becomes `@happyhorizon/*` when published
+
+2. **Path Resolution Priority**:
+
+    - In monorepo: Local packages (`packages/`) take precedence over `node_modules`
+    - In client projects: Only `node_modules/@happyhorizon/*` exists (no `packages/` directory)
+
+3. **Client Isolation**: Client projects only access published packages from npm registry, not local development files
+
+4. **Theme Overwrites**: Both monorepo apps and client projects can overwrite package components via theme structure (see client-app-development.mdc)
+
+5. **Consistent Conventions**: Follow established code style and import patterns across all packages
+
+## Documentation References
+
+- **Horizon Storefront Developer Docs**: https://devdocs.experius.nl/
+- **Project README**: See root `README.md` for installation and usage
