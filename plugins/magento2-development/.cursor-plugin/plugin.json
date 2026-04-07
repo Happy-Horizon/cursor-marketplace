@@ -1,0 +1,15 @@
+{
+  "name": "magento2-development",
+  "version": "0.1.0",
+  "description": "Rules and best practices for Magento 2 development",
+  "author": "lewis",
+  "license": "MIT",
+  "keywords": [
+    "magento",
+    "magento2",
+    "ecommerce",
+    "php",
+    "adobe-commerce"
+  ],
+  "logo": "assets/magento2-development.svg"
+}

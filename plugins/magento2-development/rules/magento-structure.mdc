@@ -1,0 +1,84 @@
+---
+description: Magento Structure
+alwaysApply: true
+---
+# Common rules for using Cursor AI Code Editor in Magento 2 projects
+
+## File Organization
+- Keep all rule files in @.cursor/rules/ directory
+- Use .mdc extension for rule files
+- Name files descriptively (e.g., common.mdc)
+- Each rule file should focus on a specific component or feature
+- Use @.cursorindexingignore to exclude files from Cursor's indexing:
+  - Database dumps and large binary files
+  - Environment-specific configuration files
+  - Magento's generated files and directories
+  - Vendor directories and dependencies
+  - Temporary files, logs, and cache files
+  - Sensitive deployment files:
+    - app/etc/env.php
+
+## Key Project Files
+- **Configuration & Setup**
+  - @composer.json - PHP dependencies and project configuration (includes magento/magento-coding-standard, phpstan, php-cs-fixer, phpmd)
+  - @composer.lock - Locked dependency versions
+  - @app/etc/env.php - Environment configuration (excluded from version control)
+  - @app/etc/config.php - Module configuration
+  - @app/etc/di.xml - Dependency injection configuration
+  - @app/etc/db_schema.xml - Database schema definitions
+  - @package.json.sample - Frontend dependencies template (NPM/Grunt)
+  - @Gruntfile.js.sample - Grunt build configuration template
+  - PHPStan configuration can be added via @phpstan.neon
+  - PHP_CodeSniffer configuration can be added via @phpcs.xml
+  - GrumPHP configuration can be added via @grumphp.yml for Git hooks
+
+- **Deployment & CI/CD**
+  - @bitbucket-pipelines.yml - Bitbucket configuration for CI/CD pipelines (if configured)
+  - @deploy.sh - Build Magento in Production mode
+  - @renvate.json - Renovate Bot configuration for Upgrades and Patches (if configured)
+  - @exclude-files-deploy - used in the rsync in the Bitbucket Pipeline Deployment (if configured)
+  - @include-files-deploy - used in the rsync in the Bitbucket Pipeline Deployment (if configured)
+
+## Development Environment
+
+### Code Standards
+- PHP version: 8.1.0+ (Magento version specified in @composer.json, minimum requirement as validated in @app/bootstrap.php)
+- Follow PSR-1 and PSR-2 coding standards ([Magento PHP Coding Standards](https://developer.adobe.com/commerce/php/coding-standards/php/))
+- Follow Magento Coding Standard (magento/magento-coding-standard) via PHP_CodeSniffer
+- Follow PHP Static Analysis rules via PHPStan (^1.9)
+- Use PHP-CS-Fixer (^3.22) for code formatting
+- Use PHPMD (3.x-dev) for code quality analysis
+- Group related changes by component
+- Use consistent naming conventions
+- Comment complex logic with comprehensive DocBlocks
+- Consider backward compatibility
+- Use `::class` keyword for class name resolution
+- Follow Magento JavaScript coding standards ([Magento JS Coding Standards](https://developer.adobe.com/commerce/php/coding-standards/js/))
+- Follow Magento jQuery Widget standards ([Magento jQuery Widget Standards](https://developer.adobe.com/commerce/php/coding-standards/jquery-widgets/))
+
+### Technology Stack
+- **Core Technologies**
+  - Magento version as specified in @composer.json (see "version" field and "magento/product-community-edition" requirement)
+  - PHP 8.1.0+ (via Apache/Nginx)
+  - MySQL/MariaDB
+  - Redis (for caching and sessions)
+  - Elasticsearch/OpenSearch (for search)
+
+- **Development Tools**
+  - Xdebug (for debugging)
+  - PHPStan (^1.9) - Static analysis tool
+  - PHP_CodeSniffer with Magento Coding Standard (magento/magento-coding-standard)
+  - PHP-CS-Fixer (^3.22) - Code formatter
+  - PHPMD (3.x-dev) - Mess detector
+  - Composer for PHP dependencies
+  - NPM/Grunt for front-end assets (see @package.json.sample and @Gruntfile.js.sample)
+  - PHPUnit (^10.5) for unit testing
+  - Magento Functional Testing Framework (^5.0) for integration testing
+
+- **Infrastructure**
+  - Warden for local development (containerized environment with Nginx, PHP, MySQL)
+    - Configuration in @.warden/warden-env.yml
+  - Bitbucket Pipelines for CI/CD (see @bitbucket-pipelines.yml)
+  - Docker containerization support
+  - Varnish caching (configurable)
+  - Production deployment via @deploy.sh script

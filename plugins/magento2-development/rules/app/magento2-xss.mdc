@@ -1,0 +1,105 @@
+---
+description: Magento 2 XSS (Cross-Site Scripting) prevention — output escaping, input processing, and template security per Adobe Commerce security guidelines.
+globs: **/*.phtml, **/*.php
+alwaysApply: false
+---
+
+# Magento 2 XSS (Cross-Site Scripting) prevention
+
+When writing or editing PHP/PHTML in this Magento 2 project, follow Adobe Commerce security guidelines for preventing Cross-Site Scripting.
+
+**Reference:** [Adobe Commerce – Cross-site scripting](https://developer.adobe.com/commerce/php/development/security/cross-site-scripting/)
+
+---
+
+## 1. Output processing — always escape in templates
+
+**Escape all dynamic output** in `.phtml` templates and anywhere output is sent to the browser.
+
+- **MUST** use **`$escaper`** (not `$block`) for escaping. If `$escaper` is not yet available in scope, initiate it with:
+  ```php
+  /** @var \Magento\Framework\Escaper $escaper */
+  ```
+- **MUST** use the appropriate `Escaper` method for the output context:
+  - **`$escaper->escapeHtml($var)`** — text/HTML content (default for most output).
+  - **`$escaper->escapeHtmlAttr($var)`** — HTML attribute values.
+  - **`$escaper->escapeUrl($var)`** — URLs (e.g. `href`, `src`).
+  - **`$escaper->escapeJs($var)`** — JavaScript strings (e.g. inline JS, `data-` attributes used by JS).
+- **MUST** use **one** of the following when output is intentionally unescaped:
+  - **`/* @noEscape */`** — output is safe and does not require escaping (e.g. already escaped or trusted markup).
+  - **`/* @escapeNotVerified */`** — output is not checked by the static test; use only when necessary and ensure escaping is verified manually.
+- **SHOULD** use type casting or `count()` for simple non-HTML output: `echo (int) $var`, `echo (string) $var`, `echo count($items)` — these are considered safe by the XSS sniff.
+- **MUST** treat any function or method whose name contains **`html`** (e.g. `getLabelHtml()`, `getSomethingHtml()`) as returning already-safe HTML: **do not escape** its output (no `$escaper->escapeHtml()` etc.), and **do not** add `/* @noEscape */` — the XSS sniff treats html-named methods as safe by convention; escaping or annotating them is unnecessary and can cause double-escaping or noise.
+
+### Prefer (escaped output)
+
+```php
+/** @var \Magento\Framework\Escaper $escaper */
+<?= $escaper->escapeHtml($product->getName()) ?>
+<?= $escaper->escapeHtmlAttr($value) ?>
+<a href="<?= $escaper->escapeUrl($url) ?>"><?= $escaper->escapeHtml($label) ?></a>
+<script>var config = <?= /* @noEscape */ $block->getJsonConfig() ?>;</script>
+<?= $block->getSomethingHtml() ?>
+```
+
+### Avoid (unescaped dynamic output)
+
+```php
+<?= $product->getName() ?>
+<?= $value ?>
+<a href="<?= $url ?>"><?= $label ?></a>
+```
+
+---
+
+## 2. Input processing
+
+- **Validate and sanitize** user input (e.g. request parameters, form data) before use.
+- **Prefer allowlists** (e.g. allowed values, types) over blocklists when validating input.
+- Do **not** rely on output escaping alone to fix untrusted input; combine input validation with output escaping.
+
+---
+
+## 3. UI components and Knockout / component data
+
+- For **UI component data providers**, mark any property that must be rendered **without** template processing (to avoid double-escaping or injection) using **`__disableTmpl`**.
+- Set **`__disableTmpl`** for customer or other sensitive data passed as-is into the UI when that data is already escaped or must not be processed by the component’s template.
+
+Example (from Adobe docs):
+
+```php
+$uiData = ['linkProperty' => '${ $.otherComponent.value }'];
+$uiData['customer'] = $customer->getData();
+$uiData['__disableTmpl'] = ['customer' => true, 'linkProperty' => 1];
+return $uiData;
+```
+
+---
+
+## 4. Static test — Magento2.Security.XssTemplate
+
+The **Magento2.Security.XssTemplate** sniff (Coding Standard) checks `.phtml` templates for unescaped output.
+
+- **Green (allowed):** `/* @noEscape */`, `/* @escapeNotVerified */`, `escapeHtml` / `escapeHtmlAttr` / `escapeUrl` / `escapeJs`, **functions/methods with `html` in the name** (output as-is; do not escape, do not add `@noEscape`), type casts, `count()`, literal strings in single/double quotes without variables.
+- **Red (violation):** Any other dynamic output that is not escaped or explicitly marked.
+
+When adding or changing template output, ensure the static test stays green (fix or add the correct escape / annotation).
+
+---
+
+## 5. Summary
+
+- **Escaping:** Always use **`$escaper`**. If not in scope, add at the top of the template: `/** @var \Magento\Framework\Escaper $escaper */`.
+
+| Context              | Use |
+|----------------------|-----|
+| HTML text/content    | `$escaper->escapeHtml($var)` |
+| HTML attribute value | `$escaper->escapeHtmlAttr($var)` |
+| URL                  | `$escaper->escapeUrl($var)` |
+| JavaScript string    | `$escaper->escapeJs($var)` |
+| Already safe HTML    | `/* @noEscape */` before output |
+| Method with `html` in name | Output as-is; **do not** escape, **do not** add `@noEscape` |
+| Literal / type only  | `(int) $var`, `(string) $var`, `count($var)`, `'literal'` |
+
+- **Never** output request or user-controlled data in templates without escaping or an explicit, justified `@noEscape` / `@escapeNotVerified`.
+- Run the **Magento2.Security.XssTemplate** sniff as part of your quality checks for `.phtml` files.

@@ -1,0 +1,1258 @@
+---
+alwaysApply: true
+---
+# Magento 2 Module Development Guidelines
+
+Based on [Adobe Commerce PHP Development Guide](https://developer.adobe.com/commerce/php/development/)
+
+## Component Types
+
+Adobe Commerce and Magento Open Source applications consist of three component types:
+
+- **Modules** - Interact with other parts of the application to accomplish business functions or provide features. Can contain UI and application interfaces.
+- **Themes** - Provide personalized look and feel for storefront or Admin (e.g., Blank theme, Luma theme).
+- **Language Packages** - Assist in internationalization (i18n) and localization by providing translations.
+
+## Technical Guidelines
+
+Based on [Adobe Commerce Technical Guidelines](https://developer.adobe.com/commerce/php/coding-standards/technical-guidelines/)
+
+These guidelines are used as reference during code reviews and some rules have corresponding code checks in static tests. All new technical initiatives SHOULD follow these recommendations.
+
+### Text Conventions
+
+Use RFC2119 to interpret keywords:
+- **MUST** and **MUST NOT** - Absolute requirements
+- **SHOULD** and **SHOULD NOT** - Strong recommendations
+- **MAY** - Optional/permissible
+- **REQUIRED**, **RECOMMENDED**, **OPTIONAL**
+
+### 1. Basic Programming Principles
+
+#### 1.1 Strict Types
+- All new PHP files **MUST** have strict type mode enabled: `declare(strict_types=1);`
+- All updated PHP files **SHOULD** have strict type mode enabled
+- PHP interfaces **MAY** have this declaration
+
+#### 1.2 Return Types
+- Explicit return types **MUST BE** declared on functions
+- Type hints for scalar arguments **SHOULD** be used
+
+#### 1.3 Function Arguments
+- Function arguments **SHOULD NOT** be modified
+
+**Example:**
+```php
+<?php
+declare(strict_types=1);
+
+class Example
+{
+    public function processData(array $data): array
+    {
+        // Process data without modifying input
+        $result = [];
+        foreach ($data as $item) {
+            $result[] = $this->transform($item);
+        }
+        return $result;
+    }
+}
+```
+
+### 2. Class Design
+
+#### 2.1 SOLID Principles
+- Object decomposition **MUST** follow SOLID principles:
+  - **S**ingle Responsibility Principle
+  - **O**pen/Closed Principle
+  - **L**iskov Substitution Principle
+  - **I**nterface Segregation Principle
+  - **D**ependency Inversion Principle
+
+#### 2.2 Object Instantiation
+- Factories **SHOULD** be used for object instantiation instead of `new` keyword
+- Objects **SHOULD** be replaceable for testing or extensibility purposes
+- Exception: DTOs (Data Transfer Objects) - no behavior, so no replaceability needed
+- Examples of DTOs: Data interfaces, Exceptions, `Zend_Db_Expr`
+
+**Not Recommended:**
+```php
+class OrderProcessor
+{
+    public function process()
+    {
+        $logger = new Logger(); // Direct instantiation
+    }
+}
+```
+
+**Recommended:**
+```php
+class OrderProcessor
+{
+    public function __construct(
+        private LoggerFactory $loggerFactory
+    ) {}
+
+    public function process()
+    {
+        $logger = $this->loggerFactory->create();
+    }
+}
+```
+
+#### 2.3 Object Initialization
+- An object **MUST** be ready for use after instantiation
+- No additional public initialization methods (`init()`, `load()`) are allowed
+- Use lazy loading within methods if needed
+
+**Not Recommended:**
+```php
+class Config
+{
+    private $data;
+
+    public function init()
+    {
+        $this->data = $this->fileReader->load('cache.xml');
+    }
+
+    public function getValue($key)
+    {
+        return $this->data[$key];
+    }
+}
+```
+
+**Recommended:**
+```php
+class Config
+{
+    private ?array $data = null;
+
+    public function __construct(
+        private FileReaderInterface $fileReader
+    ) {}
+
+    public function getValue(string $key): ?string
+    {
+        if ($this->data === null) {
+            $this->data = $this->fileReader->load('cache.xml');
+        }
+
+        return $this->data[$key] ?? null;
+    }
+}
+```
+
+#### 2.4 Constructor Rules
+- Constructor **SHOULD** only contain:
+  - Dependency assignment operations
+  - Argument validation operations
+- Constructor **SHOULD** throw exceptions when validation fails
+- Constructor **MUST NOT** trigger events
+- No other operations are allowed
+
+**Example:**
+```php
+class Composite
+{
+    private $renderers;
+
+    /**
+     * @param RendererInterface[] $renderers
+     * @throws InvalidArgumentException
+     */
+    public function __construct(array $renderers)
+    {
+        foreach ($renderers as $renderer) {
+            if (!$renderer instanceof RendererInterface) {
+                throw new InvalidArgumentException(
+                    sprintf('Instance of RendererInterface expected, got %s', get_class($renderer))
+                );
+            }
+        }
+        $this->renderers = $renderers;
+    }
+}
+```
+
+#### 2.5 Dependency Types
+- All dependencies **MUST** be requested by the most generic type required
+- Use interfaces, not concrete classes
+- This enables polymorphism and testability
+
+**Not Recommended:**
+```php
+class SessionManager
+{
+    public function __construct(RedisSessionAdapter $sessionAdapter)
+    {}
+}
+```
+
+**Recommended:**
+```php
+class SessionManager
+{
+    public function __construct(
+        private SessionAdapterInterface $sessionAdapter
+    ) {}
+}
+```
+
+#### 2.6 Proxies and Interceptors
+- Proxies and interceptors **MUST NEVER** be explicitly requested in constructors
+- Let Magento's dependency injection handle proxy generation automatically
+
+#### 2.7 Composition Over Inheritance
+- Inheritance **SHOULD NOT** be used
+- Composition **SHOULD** be used for code reuse
+- Prefer object composition and dependency injection
+
+**Not Recommended:**
+```php
+class AbstractController extends Action
+{
+    protected function validate($request) {}
+    protected function generateHash($request) {}
+}
+
+class Edit extends AbstractController
+{
+    public function execute()
+    {
+        $this->validate($request);
+    }
+}
+```
+
+**Recommended:**
+```php
+class Edit extends Action
+{
+    public function __construct(
+        Context $context,
+        private ValidatorInterface $validator,
+        private HashGeneratorInterface $hashGenerator
+    ) {
+        parent::__construct($context);
+    }
+
+    public function execute()
+    {
+        $this->validator->validate($request);
+    }
+}
+```
+
+### 3. Dependency Injection
+
+#### 3.1 Constructor Injection
+- **MUST** use constructor injection for all dependencies
+- Configure dependencies in `etc/di.xml`
+- Prefer interfaces over concrete classes
+- Use virtual types for complex configurations
+
+#### 3.2 Object Manager
+- Object Manager **SHOULD NOT** be used directly in business logic
+- Use Object Manager only in:
+  - Factories
+  - Proxies
+  - Bootstrap code
+  - Static code that cannot use DI
+
+#### 3.3 Proxies
+- Proxies provide lazy loading for expensive dependencies
+- **MUST NEVER** request proxies explicitly in constructors
+- Magento automatically generates proxies when needed
+
+#### 3.4 Factories
+- Factories **SHOULD** be used for object creation
+- Factories are auto-generated by Magento
+- Use factory pattern instead of `new` keyword
+
+### 4. Interception (Plugins)
+
+#### 4.1 Plugin Types
+- **before** - Execute before target method
+- **after** - Execute after target method
+- **around** - Wrap target method execution (use sparingly)
+
+#### 4.2 When to Use Plugins
+- Use plugins to modify input/output of methods
+- Use events for notifications and side effects
+- Plugins **SHOULD** be used instead of events when modifying method behavior
+
+#### 4.3 Plugin Guidelines
+- Register plugins in `etc/di.xml`
+- Use `sortOrder` to control execution order
+- Avoid circular dependencies
+- Limit use of `around` plugins (can increase stack traces and affect performance)
+
+### 5. Exceptions
+
+#### 5.1 Exception Handling
+- **MUST** implement proper exception handling
+- Constructor **SHOULD** throw exceptions on validation failure
+- Use specific exception types, not generic `Exception`
+- Log exceptions appropriately
+
+**Example:**
+```php
+public function __construct(array $renderers)
+{
+    foreach ($renderers as $renderer) {
+        if (!$renderer instanceof RendererInterface) {
+            throw new InvalidArgumentException(
+                sprintf('Expected RendererInterface, got %s', get_class($renderer))
+            );
+        }
+    }
+    $this->renderers = $renderers;
+}
+```
+
+### 6. Application Layers
+
+#### 6.1 Presentation Layer
+- Controllers handle HTTP requests/responses
+- Blocks contain presentation logic
+- Templates contain HTML/PHP markup
+- **MUST** escape all output (see Output Escaping section for detailed guidelines)
+- **MUST NOT** access data layer directly
+
+#### 6.2 Data Access (Persistence) Layer
+- Resource models handle database operations
+- Collections handle data retrieval
+- **MUST** use prepared statements for SQL queries
+- **MUST NOT** contain business logic
+
+#### 6.3 Service Contracts (Application) Layer
+- Define interfaces in `Api/` directory
+- Implement interfaces in `Model/` directory
+- Use repositories for data access
+- **MUST** use service contracts for public APIs
+
+### 7. Configuration
+
+#### 7.1 Configuration Management
+- System configuration: `etc/adminhtml/system.xml`
+- Default configuration: `etc/config.xml`
+- Use configuration scopes (default, website, store)
+- Sensitive settings: `etc/env.php` (excluded from version control)
+
+### 8. Modularity
+
+#### 8.1 Module Design
+- Modules **SHOULD** be independent and loosely coupled
+- Use service contracts for inter-module communication
+- Avoid direct dependencies between modules when possible
+- Follow single responsibility principle
+
+### 9. Security
+
+#### 9.1 SQL Injection Protection
+- **MUST** use prepared statements for SQL queries
+- **MUST NOT** concatenate user input into SQL queries
+- Use resource models and collections for database access
+
+**Not Recommended:**
+```php
+$connection->query("SELECT * FROM users WHERE id = " . $userId);
+```
+
+**Recommended:**
+```php
+$connection->select()->from('users')->where('id = ?', $userId);
+```
+
+#### 9.2 Authentication
+- **SHOULD** implement multi-factor authentication where possible
+- **MUST NOT** ship with default credentials
+- **SHOULD** implement weak-password checks
+- **SHOULD** align password policies with NIST 800-63 B guidelines
+- **SHOULD** harden against account enumeration attacks
+- **SHOULD** limit failed login attempts
+- **MUST** use secure session management
+
+#### 9.3 Cross-Site Scripting (XSS) Protection
+- **MUST** sanitize input
+- **MUST** escape output
+- **SHOULD** cast incoming data to expected type
+- **SHOULD** check incoming string data length
+- **SHOULD** drop special characters (null bytes) from input
+- **MUST** use `$escaper` directly in templates (see Output Escaping section for detailed guidelines)
+
+**Example:**
+```php
+<?php
+/**
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+?>
+<?= $escaper->escapeHtml($userInput) ?>
+<?= $escaper->escapeUrl($url) ?>
+<?= $escaper->escapeJs($javascript) ?>
+```
+
+#### 9.4 Cross-Site Request Forgery (CSRF) Protection
+- **MUST** utilize CSRF token mechanism
+- All data manipulation requests **MUST** use POST requests
+- Validate CSRF tokens in controllers
+
+#### 9.5 Access Control Lists (ACL)
+- Modules introducing Admin Panel functionality **MUST** have ACL
+- Define ACL resources in `etc/acl.xml`
+- Check permissions in controllers
+
+#### 9.6 Sensitive Data Exposure
+- Exceptions/Notices/Warnings **MUST** be caught and logged
+- Error output **MUST NOT** be displayed to users
+- Logs **MUST NOT** contain sensitive information (credentials, etc.)
+- Display standard messages to inform users
+
+#### 9.7 Local File Inclusion (LFI) Protection
+- User-submitted path and file names **MUST NOT** be trusted
+- **SHOULD** sanitize paths to remove dot-dot-slash (`../`)
+- Validate file paths against whitelist
+
+#### 9.8 Remote Code Execution (RCE) Protection
+- **MUST NOT** use: `eval()`, `passthru()`, `system()`, `shell_exec()`, `serialize()`, `unserialize()`, `md5()`, `srand()`, `mt_srand()`
+- User-submitted values **MUST NOT** be passed to: `include*()`, `require*()`, `create_function()`, `fopen()`, `preg_replace()`
+- Variable functions **MUST NOT** be used if variable values are user-submitted
+
+#### 9.9 Security Implementation
+- Security capabilities **SHOULD** be implemented at Framework level or in dedicated module(s)
+- **MUST** be utilized centrally by entire application
+
+#### 9.10 File Security
+- Files **MUST** be secured by web server configuration (`.htaccess` or `nginx.conf`)
+- Exception: Files intended to be publicly accessible
+
+#### 9.11 Input Validation
+- Presentation layer classes accessing user input **MUST NOT** assume it has been validated
+- Always validate and sanitize user input
+
+### 10. Events
+
+#### 10.1 Event Observer Guidelines
+- All values (including objects) passed to events **MUST NOT** be modified in observers
+- Use plugins for modifying input/output of functions
+- Events **SHOULD** be observed as specifically as possible
+- **MUST NOT** use global subscription when area-specific is sufficient (e.g., frontend-only)
+- Events **SHOULD NOT** change state of observable objects
+
+**Not Recommended:**
+```php
+class Observer implements ObserverInterface
+{
+    public function execute(Observer $observer)
+    {
+        $transport = $observer->getData('transport');
+        // Modifying transport violates rule - use plugin instead
+        $transport->setData('modified', true);
+    }
+}
+```
+
+**Recommended:**
+```php
+class Plugin
+{
+    public function aroundExecute($subject, callable $proceed, $data)
+    {
+        // Modify input/output using plugin
+        $modifiedData = $this->modifyData($data);
+        return $proceed($modifiedData);
+    }
+}
+```
+
+### 11. Web API
+
+#### 11.1 API Requirements
+- Both REST and SOAP APIs **MUST** be exposed
+- All Web API GET endpoints **MUST** return lists of entities
+- Configure in `etc/webapi_rest/routes.xml` and `etc/webapi_soap/routes.xml`
+
+### 12. Command Line Interface (CLI)
+
+#### 12.1 CLI Guidelines
+- CLI command naming guidelines **MUST** be followed
+- CLI command **MUST** be created for functionality intended for system integrators/administrators/developers
+- CLI command **MUST** always run in global area
+- If command needs specific area, area **SHOULD** be set up before execution
+- Exception in single CLI command **SHOULD NOT** break CLI framework
+
+### 13. Cron
+
+#### 13.1 Cron Guidelines
+- Cron job **SHOULD** be an idempotent method
+- Same cron job can be executed multiple times safely
+- Handle duplicate execution gracefully
+
+### 14. Testing
+
+#### 14.1 White-Box Testing
+- Test internal structure and implementation
+- Unit tests: Test individual classes and methods
+- Integration tests: Test module interactions
+- Functional tests: Test end-to-end user flows
+
+#### 14.2 Testing Patterns
+- Use PHPUnit for unit and integration tests
+- Use Magento Functional Testing Framework (MFTF) for functional tests
+- Test all code paths
+- Mock dependencies appropriately
+
+### 15. Services
+
+#### 15.1 Service Architecture
+- New features with limited customization scenarios **SHOULD** be implemented as thin extension
+- Extension communicates to service containing business logic
+- Allows independent feature releases
+- Makes feature upgrades easier
+
+## Module Structure Requirements
+
+### PSR-4 Compliance
+- **MUST** follow PSR-4 compliant structure when building modules
+- Module namespace must match directory structure
+- Example: `HappyHorizon\Catalog` → `app/code/HappyHorizon/Catalog/`
+
+### Required Files
+
+#### 1. Registration File
+- **Location**: `registration.php` (root of module directory)
+- **Purpose**: Registers the module with Magento's component registrar
+- **Format**:
+```php
+use Magento\Framework\Component\ComponentRegistrar;
+
+ComponentRegistrar::register(
+    ComponentRegistrar::MODULE,
+    'VendorName_ModuleName',
+    __DIR__
+);
+```
+
+#### 2. Module Declaration
+- **Location**: `etc/module.xml`
+- **Purpose**: Declares module name and dependencies
+- **Required Elements**:
+  - Module name (must match registration)
+  - Module sequence (dependencies)
+- **Example**:
+```xml
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+    <module name="VendorName_ModuleName">
+        <sequence>
+            <module name="Magento_Catalog"/>
+        </sequence>
+    </module>
+</config>
+```
+
+#### 3. Module README
+- **Location**: `README.md` (root of module directory)
+- **Purpose**: Document the module for developers and maintainers
+- **MUST** include:
+  - **Description**: A short paragraph explaining what the module does: purpose, main functionality, how it fits in (e.g. “plugs into…”, “adds content type…”, “customises…”), and key dependencies where relevant. Go into enough detail that a maintainer can understand the module without reading the code first.
+  - **Extension points**: An explicit inventory (do not use “See etc/di.xml” or “See etc/events.xml”; list each item):
+    - **Plugins**: For each plugin, list the plugin class and the target class it intercepts (e.g. `Vendor\Module\Plugin\SomePlugin` on `Magento\Some\TargetClass`). Include area (frontend/adminhtml) when the plugin is area-specific. If the module has no plugins, state “None.”
+    - **Observers**: For each observer, list the observer class and the event name (e.g. `Vendor\Module\Observer\SomeObserver` on event `event_name`). Include area when relevant. If the module has no observers, state “None.”
+    - **Attributes**: List any EAV attributes, extension attributes, or custom attributes: entity (or interface) and attribute code (and type where useful, e.g. string, bool). If the module adds none, state “None.”
+- **SHOULD** use a consistent structure with a “## Extension points” section and subsections for Plugins, Observers, and Attributes (each as a bullet list or short table).
+- **SHOULD** be kept up to date when adding or removing plugins, observers, or attributes.
+
+## Module File Structure
+
+### Standard Directory Structure
+```
+app/code/VendorName/ModuleName/
+├── registration.php              # Module registration (REQUIRED)
+├── composer.json                 # Composer configuration (optional but recommended)
+├── etc/
+│   ├── module.xml                # Module declaration (REQUIRED)
+│   ├── di.xml                    # Dependency injection configuration
+│   ├── frontend/
+│   │   └── routes.xml            # Frontend routes
+│   ├── adminhtml/
+│   │   └── routes.xml            # Admin routes
+│   └── webapi_rest/
+│       └── routes.xml            # REST API routes
+├── Controller/                   # Controllers
+│   ├── Index/
+│   │   └── Index.php
+│   └── Adminhtml/
+│       └── Index/
+│           └── Index.php
+├── Block/                        # View blocks
+├── Model/                        # Business logic models
+├── Plugin/                       # Plugins (interceptors)
+├── Observer/                     # Event observers
+├── Api/                          # Service contracts (interfaces)
+│   └── Data/
+│       └── EntityInterface.php
+├── view/
+│   ├── frontend/
+│   │   ├── layout/               # Frontend layouts
+│   │   └── templates/            # Frontend templates (.phtml)
+│   └── adminhtml/
+│       ├── layout/               # Admin layouts
+│       └── templates/            # Admin templates (.phtml)
+├── i18n/                         # Translation files
+│   └── en_US.csv
+└── README.md                     # Module documentation
+```
+
+## Module Development Best Practices
+
+### Naming Conventions
+- **Vendor Name**: Use company/organization name (e.g., `HappyHorizon`)
+- **Module Name**: Use descriptive, PascalCase name (e.g., ``Catalog`, `Checkout`)
+- **Full Module Name**: `VendorName_ModuleName` (e.g., `HappyHorizon_Catalog`)
+
+### Code Organization
+- Group related functionality by component
+- Use dependency injection for all dependencies
+- Follow Magento coding standards ([Magento PHP Coding Standards](https://developer.adobe.com/commerce/php/coding-standards/php/))
+- Use service contracts (interfaces) for public APIs
+- Implement proper exception handling
+- **SHOULD NOT** use inheritance - prefer composition over inheritance
+- **SHOULD NOT** create helper classes with static methods - use proper dependency injection instead
+- Objects **MUST** be ready for use after instantiation (no `init()` or `load()` methods)
+- Factories **SHOULD** be used for object creation instead of `new` keyword (except DTOs)
+- Constructor **SHOULD** only contain dependency assignment and argument validation
+- Constructor **MUST NOT** trigger events or perform other operations
+
+### Controllers
+- **Frontend Controllers**: Implement `HttpGetActionInterface` or `HttpPostActionInterface`
+- **Admin Controllers**: Extend `Magento\Backend\App\Action` and implement `HttpGetActionInterface`
+- Use proper authorization checks (`ADMIN_RESOURCE` constant for admin)
+- Return proper result types (`ResultInterface`)
+
+### Plugins (Interceptors)
+- Use plugins to modify behavior of existing methods
+- Three types: `before`, `after`, `around`
+- Register plugins in `etc/di.xml`
+- Use `sortOrder` to control plugin execution order
+- Avoid circular dependencies
+- Limit use of `around` plugins (can increase stack traces and affect performance)
+- Use plugins for modifying input/output; use events for notifications and side effects
+
+### Dependency Injection
+- Configure in `etc/di.xml`
+- **MUST** use constructor injection for all dependencies
+- Prefer interfaces over concrete classes (request most generic type)
+- Use virtual types for complex configurations
+- **MUST NEVER** request proxies or interceptors explicitly in constructors
+- Factories **SHOULD** be used instead of `new` keyword (except DTOs)
+- Object Manager **SHOULD NOT** be used directly in business logic
+- Proxies provide lazy loading and are auto-generated by Magento when needed
+
+### Routing
+- **Frontend Routes**: `etc/frontend/routes.xml` with router `id="standard"`
+- **Admin Routes**: `etc/adminhtml/routes.xml` with router `id="admin"`
+- **API Routes**: `etc/webapi_rest/routes.xml` for REST APIs
+- Route format: `frontName/controller/action`
+
+### Views and Layouts
+- **Layout XML**: Define page structure and blocks
+- **Templates**: Use `.phtml` files for presentation logic
+- **Blocks**: Separate business logic from presentation
+- **MUST** use proper escaping (see Output Escaping section below)
+- **MUST** use `$escaper` directly in templates (not deprecated block methods)
+
+## Output Escaping
+
+### Escaper in Templates
+- **MUST** escape all output in templates to prevent XSS attacks
+- The `$escaper` variable is automatically available in all `.phtml` templates
+- **MUST** use `$escaper` directly (not deprecated block methods)
+- **MUST** declare `$escaper` in template DocBlock for clarity
+
+### Escaping Methods
+
+#### escapeHtml()
+- **Use for**: HTML content (text nodes, innerHTML)
+- **Escapes**: `<`, `>`, `&`, `"`, `'`
+- **Example**: `<?= $escaper->escapeHtml($block->getTitle()) ?>`
+- **Optional parameter**: `$allowedTags` - array of allowed HTML tags
+
+#### escapeHtmlAttr()
+- **Use for**: HTML attribute values
+- **Escapes**: All HTML special characters including quotes
+- **Example**: `<div class="<?= $escaper->escapeHtmlAttr($block->getCssClass()) ?>">`
+- **Optional parameter**: `$escapeSingleQuote` (default: true)
+
+#### escapeJs()
+- **Use for**: JavaScript strings and code
+- **Escapes**: JavaScript special characters, quotes, newlines
+- **Example**: `var name = '<?= $escaper->escapeJs($block->getName()) ?>';`
+
+#### escapeJsQuote()
+- **Use for**: JavaScript strings with specific quote character
+- **Escapes**: JavaScript special characters for quoted strings
+- **Example**: `var data = '<?= $escaper->escapeJsQuote($block->getData(), "'") ?>';`
+- **Parameters**: `$data`, `$quote` (default: `'\''`)
+
+#### escapeUrl()
+- **Use for**: URL values in href attributes
+- **Escapes**: URL-unsafe characters
+- **Example**: `<a href="<?= $escaper->escapeUrl($block->getUrl()) ?>">`
+
+#### escapeCss()
+- **Use for**: CSS values
+- **Escapes**: CSS special characters
+- **Example**: `style="color: <?= $escaper->escapeCss($block->getColor()) ?>;"`
+
+### Template Example
+```php
+<?php
+/**
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+?>
+<h1><?= $escaper->escapeHtml($block->getTitle()) ?></h1>
+<a href="<?= $escaper->escapeUrl($block->getUrl()) ?>"
+   class="<?= $escaper->escapeHtmlAttr($block->getCssClass()) ?>">
+    <?= $escaper->escapeHtml($block->getLinkText()) ?>
+</a>
+<script>
+    var productName = '<?= $escaper->escapeJs($block->getProductName()) ?>';
+</script>
+```
+
+### Best Practices
+- **MUST** escape all user-generated or database-sourced content
+- **MUST** escape content even if it's "trusted" - defense in depth
+- **MUST NOT** double-escape (don't escape already-escaped content)
+- **MUST** use the appropriate escaping method for the context (HTML vs JS vs URL)
+- **SHOULD** use `escapeHtml()` for most text content
+- **SHOULD** use `escapeHtmlAttr()` for all HTML attribute values
+- **SHOULD** use `escapeJs()` for all JavaScript string values
+- **MUST NOT** use deprecated block methods (`$block->escapeHtml()`, etc.) - use `$escaper` directly
+
+## Module Lifecycle
+
+### Enable/Disable
+```bash
+# Enable module
+php bin/magento module:enable VendorName_ModuleName
+
+# Disable module
+php bin/magento module:disable VendorName_ModuleName
+
+# Run setup upgrade after enabling
+php bin/magento setup:upgrade
+
+# Clear cache
+php bin/magento cache:flush
+```
+
+### Module Status
+- Check module status: `php bin/magento module:status`
+- Modules can be enabled/disabled without code changes
+- Disabled modules are not loaded by the application
+
+## Common Patterns
+
+### Service Contracts
+- Define interfaces in `Api/` directory
+- Implement interfaces in `Model/` directory
+- Use repositories for data access
+- Prefer service contracts over direct model access
+
+### Events and Observers
+- Declare observers in `etc/events.xml` or `etc/frontend/events.xml`
+- Observer classes in `Observer/` directory
+- Use events for loose coupling between modules
+
+### Configuration
+- System configuration: `etc/adminhtml/system.xml`
+- Default configuration: `etc/config.xml`
+- Use configuration scopes (default, website, store)
+
+### Database Schema
+- Use declarative schema: `etc/db_schema.xml`
+- Migration scripts: `Setup/Patch/Data/` and `Setup/Patch/Schema/`
+- Avoid direct SQL queries; use resource models
+
+## Testing
+
+### White-Box Testing
+- Test internal structure and implementation
+- Cover all code paths
+- Mock dependencies appropriately
+
+### Unit Tests
+- Location: `Test/Unit/`
+- Use PHPUnit
+- Test individual classes and methods
+- Test in isolation with mocked dependencies
+
+### Integration Tests
+- Location: `Test/Integration/`
+- Test module interactions
+- Use Magento test framework
+- Test with real database and dependencies
+
+### Functional Tests
+- Use Magento Functional Testing Framework (MFTF)
+- Test end-to-end user flows
+- Test from user perspective
+- Use test data fixtures
+
+### Testing Best Practices
+- Write tests for all new code
+- Test both success and failure scenarios
+- Use data providers for multiple test cases
+- Follow AAA pattern (Arrange, Act, Assert)
+
+## Deprecated Functions and Methods
+
+### General Rules
+- **MUST NOT** use deprecated functions, methods, or classes
+- **MUST** check PHPDoc `@deprecated` tags before using any method
+- **MUST** use recommended alternatives when available
+- **MUST** update existing code that uses deprecated functionality
+- Deprecated code may be removed in future Magento versions
+- Static analysis tools **SHOULD** be configured to detect deprecated usage
+
+### Common Deprecated Patterns in Modules
+
+#### Block Escaping Methods (Deprecated since 103.0.0)
+- **MUST NOT** use: `$block->escapeHtml()`, `$block->escapeJs()`, `$block->escapeHtmlAttr()`, `$block->escapeUrl()`, `$block->escapeCss()`
+- **MUST** use: `$escaper->escapeHtml()`, `$escaper->escapeJs()`, `$escaper->escapeHtmlAttr()`, `$escaper->escapeUrl()`, `$escaper->escapeCss()`
+- See Output Escaping section above for detailed escaping guidelines
+
+**Deprecated:**
+```php
+<?= $block->escapeHtml($data) ?>
+<?= $block->escapeJs($data) ?>
+<?= $block->escapeUrl($url) ?>
+```
+
+**Correct:**
+```php
+<?php
+/**
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+?>
+<?= $escaper->escapeHtml($data) ?>
+<?= $escaper->escapeJs($data) ?>
+<?= $escaper->escapeUrl($url) ?>
+```
+
+#### Other Deprecated Block Methods (Deprecated since 101.0.0)
+- **MUST NOT** use: `$block->escapeXssInUrl()`, `$block->escapeQuote()`, `$block->escapeJsQuote()`
+- **MUST** use: `$escaper->escapeXssInUrl()`, `$escaper->escapeQuote()`, `$escaper->escapeJsQuote()`
+
+#### Object Manager Direct Usage
+- **MUST NOT** use `ObjectManager::getInstance()` directly in business logic
+- **MUST** use dependency injection instead
+- Object Manager **SHOULD** only be used in factories, proxies, bootstrap code, or static code
+
+**Deprecated:**
+```php
+$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+$product = $objectManager->get(\Magento\Catalog\Model\Product::class);
+```
+
+**Correct:**
+```php
+use Magento\Catalog\Model\ProductFactory;
+
+class MyClass
+{
+    public function __construct(
+        private ProductFactory $productFactory
+    ) {}
+
+    public function doSomething()
+    {
+        $product = $this->productFactory->create();
+    }
+}
+```
+
+#### Direct Model Instantiation
+- **MUST NOT** use `new` keyword for Magento models
+- **MUST** use factories instead
+- Exception: DTOs (Data Transfer Objects) may use `new`
+
+**Deprecated:**
+```php
+$product = new \Magento\Catalog\Model\Product();
+```
+
+**Correct:**
+```php
+use Magento\Catalog\Model\ProductFactory;
+
+public function __construct(
+    private ProductFactory $productFactory
+) {}
+
+public function createProduct()
+{
+    $product = $this->productFactory->create();
+}
+```
+
+#### DataObject Magic Methods
+- **MUST NOT** use `__get()`, `__set()`, `__isset()`, `__unset()` on `\Magento\Framework\DataObject`
+- **MUST** use explicit getter/setter methods or `getData()`, `setData()`
+
+**Deprecated:**
+```php
+$object = new \Magento\Framework\DataObject();
+$object->name = 'value'; // Magic setter
+$value = $object->name;  // Magic getter
+```
+
+**Correct:**
+```php
+$object = new \Magento\Framework\DataObject();
+$object->setData('name', 'value');
+$value = $object->getData('name');
+```
+
+### Checking for Deprecations
+- **SHOULD** run static tests: `vendor/bin/phpcs --standard=vendor/magento/magento-coding-standard/Magento app/code/`
+- **SHOULD** configure PHPStan to detect deprecated method calls
+- **SHOULD** check IDE warnings for deprecated method usage
+- **SHOULD** review Magento release notes for deprecation announcements
+- **SHOULD** use `grep -r "@deprecated" vendor/magento/` to find deprecated methods
+
+### Migration Strategy
+1. Identify all deprecated method calls in module
+2. Replace with recommended alternatives
+3. Update unit and integration tests
+4. Test thoroughly after migration
+5. Update code reviews to catch deprecated usage
+6. Document migration in module changelog
+
+### Code Review Checklist
+- [ ] No deprecated methods used
+- [ ] All escaping uses `$escaper` directly
+- [ ] No direct Object Manager usage
+- [ ] No direct model instantiation with `new`
+- [ ] No magic methods on DataObject
+- [ ] Static analysis passes without deprecation warnings
+
+## Web APIs
+
+### API Requirements
+- Both REST and SOAP APIs **MUST** be exposed for the same functionality
+- All Web API GET endpoints **MUST** return lists of entities
+- Configure REST API routes in `etc/webapi_rest/routes.xml`
+- Configure SOAP API routes in `etc/webapi_soap/routes.xml`
+- Use service contracts (interfaces) for API endpoints
+- Implement proper authentication and authorization
+- When the module exposes a Web API (e.g. `etc/webapi_rest/routes.xml` or `etc/webapi.xml` is present), the module **MUST** include API documentation with example calls (e.g. in the module README or a dedicated `docs/api.md`), covering each endpoint with sample request/response and authentication where applicable
+
+### REST API
+- Use RESTful conventions
+- Return proper HTTP status codes
+- Use JSON for request/response
+- Document with Swagger/OpenAPI
+
+### SOAP API
+- Define WSDL in `etc/webapi_soap/routes.xml`
+- Use SOAP standards
+- Support both SOAP 1.1 and SOAP 1.2
+
+### GraphQL
+- Consider GraphQL for flexible queries
+- Define schema in `etc/schema.graphqls`
+- Implement resolvers for data fetching
+
+## Component Development Lifecycle
+
+### Prepare Phase
+- Plan component structure
+- Identify dependencies
+- Design service contracts
+- Plan database schema
+
+### Build Phase
+- Create module structure
+- Implement functionality
+- Write tests
+- Follow coding standards
+
+### Package Phase
+- Create composer.json
+- Package for distribution
+- Create documentation
+- Version appropriately
+
+### Validate Phase
+- Run static tests (PHPCS, PHPStan)
+- Run unit and integration tests
+- Test in different environments
+- Validate against Magento standards
+
+### Component Load Order
+- Modules load in dependency order
+- Define dependencies in `etc/module.xml` `<sequence>`
+- Magento resolves load order automatically
+- Circular dependencies are not allowed
+
+## Composer Integration
+
+### composer.json Structure
+```json
+{
+    "name": "vendor/module-name",
+    "description": "Module description",
+    "type": "magento2-module",
+    "version": "1.0.0",
+    "license": "proprietary",
+    "require": {
+        "php": "~8.1.0||~8.2.0||~8.3.0",
+        "magento/framework": "*",
+        "magento/module-catalog": "*"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Vendor\\ModuleName\\": ""
+        }
+    }
+}
+```
+
+### Autoloading
+- Use PSR-4 autoloading
+- Register module in `registration.php`
+- Composer handles autoloading automatically
+- Run `composer dump-autoload` after changes
+
+## Advanced Patterns
+
+### EAV and Extension Attributes
+- EAV (Entity-Attribute-Value) for flexible attributes
+- Extension attributes for custom data on entities
+- Define extension attributes in `etc/extension_attributes.xml`
+- Use repositories to load entities with extension attributes
+
+**Example:**
+```xml
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Api/etc/extension_attributes.xsd">
+    <extension_attributes for="Magento\Catalog\Api\Data\ProductInterface">
+        <attribute code="custom_attribute" type="string"/>
+    </extension_attributes>
+</config>
+```
+
+### Repository Pattern
+- Define repository interface in `Api/` directory
+- Implement repository in `Model/` directory
+- Use repositories for all data access
+- Repositories return service contract interfaces
+
+**Example:**
+```php
+// Api/EntityRepositoryInterface.php
+interface EntityRepositoryInterface
+{
+    public function getById(int $id): EntityInterface;
+    public function save(EntityInterface $entity): EntityInterface;
+    public function delete(EntityInterface $entity): bool;
+}
+```
+
+### Search Repositories
+- Use search criteria for filtering
+- Implement `SearchCriteriaInterface` for queries
+- Return `SearchResultsInterface` with results
+- Support pagination, sorting, filtering
+
+## Database and Schema
+
+### Declarative Schema
+- Use `etc/db_schema.xml` for schema definition
+- Magento automatically creates/updates tables
+- Supports tables, columns, indexes, constraints
+- Version-controlled schema changes
+
+**Example:**
+```xml
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="custom_table" resource="default" engine="innodb" comment="Custom Table">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false" identity="true" comment="Entity ID"/>
+        <column xsi:type="varchar" name="name" length="255" nullable="false" comment="Name"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+    </table>
+</schema>
+```
+
+### Data Patches
+- Location: `Setup/Patch/Data/`
+- Use for data migrations
+- Implement `DataPatchInterface`
+- Run once per installation/upgrade
+
+**Example:**
+```php
+class AddDefaultData implements DataPatchInterface
+{
+    public function apply()
+    {
+        // Add default data
+        return $this;
+    }
+
+    public static function getDependencies()
+    {
+        return [];
+    }
+
+    public function getAliases()
+    {
+        return [];
+    }
+}
+```
+
+### Schema Patches
+- Location: `Setup/Patch/Schema/`
+- Use for schema changes not covered by declarative schema
+- Implement `SchemaPatchInterface`
+- Use sparingly - prefer declarative schema
+
+## Message Queues
+
+### Asynchronous Operations
+- Use message queues for long-running operations
+- Improve user experience with background processing
+- Configure queues in `etc/queue_topology.xml` and `etc/queue_publisher.xml`
+
+### Queue Configuration
+```xml
+<!-- etc/queue_topology.xml -->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/topology.xsd">
+    <exchange name="custom.exchange" type="topic" connection="amqp">
+        <binding id="custom.binding" topic="custom.topic" destinationType="queue" destination="custom.queue"/>
+    </exchange>
+</config>
+```
+
+### Topics
+- Define topics in `etc/communication.xml`
+- Topics represent message types
+- Consumers process messages from topics
+
+### Bulk Operations
+- Use bulk APIs for multiple operations
+- More efficient than individual API calls
+- Implement `BulkOperationInterface`
+- Process in background via message queues
+
+## Caching
+
+### Partial Caching
+- Cache specific blocks or data
+- Use cache tags for invalidation
+- Implement `IdentityInterface` in blocks
+- Cache lifetime configuration
+
+### Full Page Caching
+- Cache entire pages for anonymous users
+- Use Varnish or built-in FPC
+- Configure in `etc/cache.xml`
+- Cache invalidation via tags
+
+### Custom Cache Types
+- Define custom cache types in `etc/cache.xml`
+- Use for module-specific caching
+- Configure cache backend (file, Redis, etc.)
+
+**Example:**
+```xml
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Cache/etc/cache.xsd">
+    <type name="custom_cache" translate="label,description" instance="Vendor\Module\Model\Cache\Type">
+        <label>Custom Cache</label>
+        <description>Custom cache type description</description>
+    </type>
+</config>
+```
+
+### Cache Tags and Invalidation
+- Use cache tags to group related cache entries
+- Invalidate by tag when data changes
+- Tags defined in `etc/cache.xml`
+- Automatic invalidation on entity save/delete
+
+## Advanced Development Topics
+
+### Indexing and Indexers
+- Indexers improve query performance
+- Define indexers in `etc/indexer.xml`
+- Implement `IndexerInterface`
+- Support full and partial reindexing
+
+**Example:**
+```xml
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Indexer/etc/indexer.xsd">
+    <indexer id="custom_indexer" view_id="custom_indexer" class="Vendor\Module\Model\Indexer\Custom">
+        <title translate="true">Custom Indexer</title>
+        <description translate="true">Indexes custom data</description>
+    </indexer>
+</config>
+```
+
+### Custom Indexer Creation
+- Create indexer class implementing `IndexerInterface`
+- Define index structure
+- Implement `executeFull()` and `executeRow()`
+- Register in `etc/indexer.xml`
+
+### View Models
+- Use view models for complex presentation logic
+- Better than putting logic in blocks
+- Implement `ViewModelInterface`
+- Inject into templates via layout XML
+
+**Example:**
+```xml
+<block class="Magento\Framework\View\Element\Template" name="custom.block">
+    <arguments>
+        <argument name="view_model" xsi:type="object">Vendor\Module\ViewModel\Custom</argument>
+    </arguments>
+</block>
+```
+
+### Adapters Pattern
+- Use adapters to wrap third-party libraries
+- Create adapter interface
+- Implement adapter for library
+- Allows easy library replacement
+
+### Variable Pool
+- Share data between layout elements
+- Use `$block->getData('key')` and `$block->setData('key', $value)`
+- Useful for passing data to child blocks
+- Scope limited to layout rendering
+
+## References
+
+- [Adobe Commerce PHP Development Guide](https://developer.adobe.com/commerce/php/development/)
+- [Magento Coding Standards](https://developer.adobe.com/commerce/php/coding-standards/php/)
+- [Technical Guidelines](https://developer.adobe.com/commerce/php/coding-standards/technical-guidelines/) - **Critical reference for all development**
+- [Component File Structure](https://developer.adobe.com/commerce/php/development/components/file-structure/)
+- [Dependency Injection](https://developer.adobe.com/commerce/php/development/components/dependency-injection/)
+- [Plugins (Interceptors)](https://developer.adobe.com/commerce/php/development/components/plugins/)

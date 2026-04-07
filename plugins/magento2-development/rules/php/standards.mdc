@@ -1,0 +1,140 @@
+---
+description: PHP standards for this project — constructor promotion, type casting, and imports. Replaces php8-constructor, php-type-casting, and qualifiers-to-import rules.
+globs: **/*.php
+alwaysApply: false
+---
+
+# PHP standards
+
+When writing or editing PHP in this project, follow these standards.
+
+---
+
+## 1. PHP 8 constructor property promotion
+
+**Prefer PHP 8 constructor property promotion** over the traditional style (separate property declarations and assignment in `__construct()`).
+
+- **SHOULD** use promoted properties when a constructor only assigns parameters to same-named properties.
+- **SHOULD** suggest refactoring existing PHP 7-style constructors to promoted properties when touching that code, when the body is only dependency/property assignment.
+- Use **promoted properties** (visibility + type in constructor parameters).
+- Add **`readonly`** when dependencies are never reassigned (PHP 8.1+).
+- Keep a **trailing comma** in the constructor parameter list.
+- If the constructor has validation, event dispatch, or other logic beyond assignment, keep that in the body; only simple assignments can be replaced by promotion.
+
+### Avoid (PHP 7 style when only assigning)
+
+```php
+class OrderProcessor
+{
+    private LoggerInterface $logger;
+    private ConfigInterface $config;
+
+    public function __construct(
+        LoggerInterface $logger,
+        ConfigInterface $config
+    ) {
+        $this->logger = $logger;
+        $this->config = $config;
+    }
+}
+```
+
+### Prefer (PHP 8 style)
+
+```php
+class OrderProcessor
+{
+    public function __construct(
+        private readonly LoggerInterface $logger,
+        private readonly ConfigInterface $config,
+    ) {}
+}
+```
+
+---
+
+## 2. Type casting — cast operators over functions
+
+**Use cast operators** `(int)`, `(float)`, `(string)`, `(bool)`, `(array)`, `(object)` instead of `intval()`, `floatval()`, `strval()`, `boolval()` and similar when a simple conversion suffices.
+
+- **SHOULD** use cast operators for type conversion.
+- **SHOULD** avoid `intval()`, `floatval()`, `doubleval()`, `strval()`, `boolval()` when a simple cast suffices.
+- **SHOULD** refactor existing type-conversion function calls to casts when touching that code (e.g. `intval($x)` → `(int) $x`).
+- Use **short cast names**: `(int)` not `(integer)`, `(bool)` not `(boolean)`, `(float)` not `(double)`/`(real)`.
+- Use `intval($var, $base)` only when a non-decimal base is required; otherwise prefer `(int)`.
+- For strict parsing or validation, keep using appropriate functions or validators.
+
+### Avoid (function-based when a cast suffices)
+
+```php
+$id = intval($request->getParam('id'));
+$price = floatval($data['price']);
+$label = strval($item->getLabel());
+$enabled = boolval($config->getValue('enabled'));
+```
+
+### Prefer (cast operators)
+
+```php
+$id = (int) $request->getParam('id');
+$price = (float) $data['price'];
+$label = (string) $item->getLabel();
+$enabled = (bool) $config->getValue('enabled');
+```
+
+---
+
+## 3. Imports instead of fully qualified names in body
+
+**Use `use` statements and short class names** instead of fully qualified class names (FQCN) in the body of the file.
+
+- **MUST** add a `use` statement at the top for any class referenced by full namespace in the file.
+- **MUST** use the short class name in code after the import, not the FQCN.
+- **SHOULD** refactor existing FQCNs to imports when touching that file.
+- Place `use` statements after the `namespace` declaration, in **alphabetical order** (matches `ordered_imports`).
+- One `use` per class; use `as` only when needed to avoid name clashes.
+- In docblocks (`@param`, `@var`, `@return`), use the short name when the class is imported.
+- Exception: `::class` references can stay FQCN where an import is impractical; prefer adding the import and using the short name when editing PHP classes.
+
+### Avoid (qualified in body)
+
+```php
+<?php
+declare(strict_types=1);
+
+namespace Vendor\Module\Model;
+
+class Example
+{
+    public function run(): \Magento\Framework\DataObject
+    {
+        return new \Magento\Framework\DataObject(['key' => 'value']);
+    }
+
+    /** @var \Magento\Framework\Stdlib\DateTime\DateTime */
+    private $dateTime;
+}
+```
+
+### Prefer (import + short name)
+
+```php
+<?php
+declare(strict_types=1);
+
+namespace Vendor\Module\Model;
+
+use Magento\Framework\DataObject;
+use Magento\Framework\Stdlib\DateTime\DateTime;
+
+class Example
+{
+    public function run(): DataObject
+    {
+        return new DataObject(['key' => 'value']);
+    }
+
+    /** @var DateTime */
+    private $dateTime;
+}
+```
