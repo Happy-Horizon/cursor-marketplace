@@ -1,8 +1,12 @@
 {
   "name": "magento2-development",
+  "displayName": "Magento 2 Development",
   "version": "0.1.0",
   "description": "Rules and best practices for Magento 2 development",
-  "author": "lewis",
+  "author": {
+    "name": "Lewis Voncken",
+    "email": "lewisvoncken@happyhorizon.com"
+  },
   "license": "MIT",
   "keywords": [
     "magento",
