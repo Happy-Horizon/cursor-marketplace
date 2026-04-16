@@ -5,7 +5,7 @@
     "email": "hello@happyhorizon.com"
   },
   "metadata": {
-    "description": "A curated set of AI plugins for Happy Horizon teams — covering Magento 2 Hyvä Theme development and beyond.",
+    "description": "A curated set of AI plugins for Happy Horizon teams — spanning Magento 2, Hyvä Theme, and the Horizon Storefront plugin, with room to extend each package with your own rules, skills, and workflows.",
     "version": "0.1.2",
     "pluginRoot": "plugins"
   },
@@ -23,7 +23,7 @@
     {
       "name": "horizon-storefront",
       "source": "horizon-storefront",
-      "description": "Placeholder rules for Horizon storefront development — extend with Hyvä, Magento, and frontend guidance"
+      "description": "Rules and skills for Horizon Storefront — storefront conventions, structure, and day-to-day development guidance for Happy Horizon teams."
     }
   ]
 }
