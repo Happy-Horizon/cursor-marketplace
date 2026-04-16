@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A curated set of AI plugins for Happy Horizon teams — covering Magento 2 Hyvä Theme development and beyond.",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "pluginRoot": "plugins"
   },
   "plugins": [
@@ -23,7 +23,7 @@
     {
       "name": "horizon-storefront",
       "source": "horizon-storefront",
-      "description": "Placeholder rules for Horizon storefront development — extend with Hyvä, Magento, and frontend guidance."
+      "description": "Placeholder rules for Horizon storefront development — extend with Hyvä, Magento, and frontend guidance.."
     }
   ]
 }
