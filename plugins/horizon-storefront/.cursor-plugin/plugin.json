@@ -1,8 +1,8 @@
 {
   "name": "horizon-storefront",
   "displayName": "Horizon Storefront",
-  "version": "0.1.0",
-  "description": "Placeholder rules for Horizon storefront development. Extend with team-specific Hyvä, Magento, and frontend guidance.",
+  "version": "0.1.1",
+  "description": "Placeholder rules for Horizon storefront development. Extend with team-specific Hyvä, Magento, and frontend guidance",
   "author": {
     "name": "Lewis Voncken",
     "email": "lewisvoncken@happyhorizon.com"
@@ -16,5 +16,5 @@
     "hyva",
     "magento"
   ],
-  "logo": "assets/hs.svg"
+  "logo": "assets/logo.svg"
 }
