@@ -22,6 +22,14 @@ npx skills update -y -p
 
 Use `npx skills list` to see what is installed. Commit changes to `skills-lock.json` and `.agents/skills/` (or let CI open a PR — see [`.github/workflows/sync-vendor-skills.yml`](../.github/workflows/sync-vendor-skills.yml)).
 
+After `npx skills update`, the CLI may add symlink trees under many agent folders (`.claude/skills`, `.bob/skills`, …). **This repository only tracks `.agents/skills/`** for the Cursor marketplace plugin. Run:
+
+```bash
+bash scripts/prune-synced-vendor-agent-skills.sh
+```
+
+…from the repo root before committing, or rely on the sync workflow to run it automatically after update.
+
 ## Plugin wiring
 
 `plugins/horizon-frontend-foundations/` uses **relative symlinks** into this folder so the marketplace plugin stays in sync without duplicating vendor files in the plugin tree.
