@@ -54,7 +54,7 @@ Happy Horizon **storefront** conventions for the monorepo and client apps. See t
 
 ### [horizon-frontend-foundations](plugins/horizon-frontend-foundations/)
 
-Shared **Next.js / React / Vercel-oriented** rules and vendor skills for Horizon client repos. Plugin `rules/` and `skills/` are **symlinks** into [`synced-vendor-skills/`](synced-vendor-skills/) so vendor bodies are not duplicated. Typical client setup: enable **both** `horizon-frontend-foundations` and `horizon-storefront` in Cursor.
+Shared **Next.js / React / Vercel-oriented** rules and vendor skills for Horizon client repos. Plugin `rules/` and `skills/` are **symlinks** into [`synced-vendor-skills/`](synced-vendor-skills/) (`skills/` links the whole `.agents/skills/` tree so new vendor installs show up without extra links). Typical client setup: enable **both** `horizon-frontend-foundations` and `horizon-storefront` in Cursor.
 
 | Skill                         | Description                                                                                      |
 | ----------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -85,8 +85,8 @@ plugins/
   horizon-storefront/                    # Storefront rules + skills
   horizon-frontend-foundations/        # Symlinks into synced-vendor-skills/
 scripts/
-  validate-template.mjs                  # Manifest + plugin + skill checks
-  prune-synced-vendor-agent-skills.sh    # Keep only .agents/skills after skills CLI update
+  validate-template.mjs                      # Manifest + plugin + skill checks
+  prune-synced-vendor-agent-skills.sh        # Keep only .agents/skills after skills CLI update
 ```
 
 ## Validate changes

@@ -7,7 +7,7 @@ Single source of truth for **third-party agent skills** (and shared rules used b
 | Path | Purpose |
 |------|---------|
 | `skills-lock.json` | Lock file for the [`skills` CLI](https://github.com/vercel-labs/skills) |
-| `.agents/skills/` | Skill trees installed/updated by `npx skills` (Cursor discovers via the plugin symlink) |
+| `.agents/skills/` | Skill trees installed/updated by `npx skills`; `plugins/.../skills` is **one symlink** to this directory so new skills need no extra links |
 | `rules-frontend-foundations/` | Shared `.mdc` rules symlinked into `plugins/horizon-frontend-foundations/rules/` |
 
 ## Add or update skills
@@ -30,9 +30,11 @@ bash scripts/prune-synced-vendor-agent-skills.sh
 
 …from the repo root before committing, or rely on the sync workflow to run it automatically after update.
 
+If `plugins/horizon-frontend-foundations/rules` or `skills` symlinks are missing (unusual — they are in git), see [plugins/horizon-frontend-foundations/README.md](../plugins/horizon-frontend-foundations/README.md) for repair commands.
+
 ## Plugin wiring
 
-`plugins/horizon-frontend-foundations/` uses **relative symlinks** into this folder so the marketplace plugin stays in sync without duplicating vendor files in the plugin tree.
+`plugins/horizon-frontend-foundations/` uses **relative symlinks** into this folder so the marketplace plugin stays in sync without duplicating vendor files in the plugin tree. See [plugins/horizon-frontend-foundations/README.md](../plugins/horizon-frontend-foundations/README.md) for the exact layout and commands.
 
 ## Windows checkouts
 

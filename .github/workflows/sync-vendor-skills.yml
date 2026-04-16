@@ -32,7 +32,7 @@ jobs:
           commit-message: "[FEATURE] Refresh synced vendor skills (automated)"
           title: "[FEATURE] Refresh synced vendor skills (automated)"
           body: |
-            Automated run of `npx skills update -y -p` in `synced-vendor-skills/`, then `scripts/prune-synced-vendor-agent-skills.sh` so only `.agents/skills/` is committed (the CLI otherwise adds symlink stubs for every agent in CI).
+            Automated run of `npx skills update -y -p` in `synced-vendor-skills/`, then `scripts/prune-synced-vendor-agent-skills.sh` so only `.agents/skills/` is committed (the CLI otherwise adds symlink stubs for every agent in CI). Plugin `rules/` and `skills/` symlinks are version-controlled and do not need updating when skills change.
 
             Review `synced-vendor-skills/.agents/skills/` and `synced-vendor-skills/skills-lock.json`, then merge.
           branch: feature/sync-vendor-skills
