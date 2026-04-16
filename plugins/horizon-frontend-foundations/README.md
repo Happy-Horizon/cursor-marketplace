@@ -22,9 +22,21 @@ Keep **client-only** rules and skills in that repo’s project-level `.cursor` t
 
 ## Refresh vendor skills
 
+**Preferred:** run the GitHub Action [Sync vendor skills](https://github.com/Happy-Horizon/cursor-marketplace/actions/workflows/sync-vendor-skills.yml) (workflow dispatch). It runs `npx skills update -y -p` in `synced-vendor-skills/`, prunes agent skill links, and opens a PR when the lockfile or skills change. A schedule also runs it daily.
+
+**Adding a new skill:** search by name, then install using the full package and skill id from the results:
+
+```bash
+cd synced-vendor-skills
+npx skills find next-upgrade
+npx skills install -p -y vercel-labs/next-skills@next-upgrade
+```
+
+Replace the query and the `owner/repo@skill` string with whatever `find` prints for the skill you want.
+
+**Local refresh only** (same as CI, no PR):
+
 ```bash
 cd synced-vendor-skills
 npx skills update -y -p
 ```
-
-CI can run the same command on a schedule; see the repo workflow `sync-vendor-skills.yml`.
