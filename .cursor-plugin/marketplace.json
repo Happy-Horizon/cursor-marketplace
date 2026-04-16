@@ -24,6 +24,11 @@
       "name": "horizon-storefront",
       "source": "horizon-storefront",
       "description": "Rules and skills for Horizon Storefront — storefront conventions, structure, and day-to-day development guidance for Happy Horizon teams."
+    },
+    {
+      "name": "horizon-frontend-foundations",
+      "source": "horizon-frontend-foundations",
+      "description": "Shared Next.js, React, and web stack skills and rules for all Horizon client projects — vendor content lives under synced-vendor-skills/ and is wired in via symlinks."
     }
   ]
 }

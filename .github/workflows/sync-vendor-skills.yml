@@ -1,0 +1,36 @@
+name: Sync vendor skills
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run skills update (project scope)
+        working-directory: synced-vendor-skills
+        run: npx skills update -y -p
+
+      - name: Open pull request when lock or skills change
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "[FEATURE][NEXT-406] Refresh synced vendor skills"
+          title: "[FEATURE][NEXT-406] Refresh synced vendor skills"
+          body: |
+            Automated run of `npx skills update -y -p` in `synced-vendor-skills/`.
+
+            Review diff under `synced-vendor-skills/.agents/skills/` and `synced-vendor-skills/skills-lock.json`, then merge.
+          branch: chore/sync-vendor-skills
+          delete-branch: true

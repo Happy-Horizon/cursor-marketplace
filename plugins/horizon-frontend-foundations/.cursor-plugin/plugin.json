@@ -1,0 +1,27 @@
+{
+  "name": "horizon-frontend-foundations",
+  "displayName": "Horizon Frontend Foundations",
+  "version": "0.1.0",
+  "description": "Shared Next.js, React, and web stack skills and rules for all Horizon storefront client projects — content symlinked from synced-vendor-skills/ and refreshed with npx skills update.",
+  "author": {
+    "name": "Lewis Voncken",
+    "email": "lewisvoncken@happyhorizon.com"
+  },
+  "contributors": [
+    {
+      "name": "Collin Woerde",
+      "email": "collinwoerde@happyhorizon.com"
+    }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "cursor",
+    "plugin",
+    "horizon",
+    "nextjs",
+    "react",
+    "vercel",
+    "frontend"
+  ],
+  "logo": "assets/logo.svg"
+}

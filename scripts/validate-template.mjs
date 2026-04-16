@@ -94,6 +94,14 @@ function parseFrontmatter(content) {
   return fields;
 }
 
+async function statFollow(entryPath) {
+  try {
+    return await fs.stat(entryPath);
+  } catch {
+    return null;
+  }
+}
+
 async function walkFiles(dirPath) {
   const files = [];
   const stack = [dirPath];
@@ -105,8 +113,22 @@ async function walkFiles(dirPath) {
       const entryPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
         stack.push(entryPath);
-      } else if (entry.isFile()) {
+        continue;
+      }
+      if (entry.isFile()) {
         files.push(entryPath);
+        continue;
+      }
+      if (entry.isSymbolicLink()) {
+        const st = await statFollow(entryPath);
+        if (!st) {
+          continue;
+        }
+        if (st.isDirectory()) {
+          stack.push(entryPath);
+        } else if (st.isFile()) {
+          files.push(entryPath);
+        }
       }
     }
   }

@@ -23,10 +23,19 @@ AI-powered skills for Magento 2 development with Hyvä Theme. Source: [lewisvonc
 | `hyva-theme-list` | List all Hyvä theme paths in a Magento 2 project |
 | `hyva-ui-component` | Install Hyva UI template-based components to themes |
 
+### [horizon-storefront](plugins/horizon-storefront/)
+
+Horizon storefront conventions — rules and skills specific to Happy Horizon storefront repos.
+
+### [horizon-frontend-foundations](plugins/horizon-frontend-foundations/)
+
+Shared Next.js / React / web-stack skills and rules for **all** Horizon client projects. Vendor skill bodies live under [`synced-vendor-skills/`](synced-vendor-skills/) and are symlinked into this plugin; refresh with `npx skills update -y -p` from that directory (or use the scheduled GitHub Action).
+
 ## Repository Structure
 
 ```
 .cursor-plugin/marketplace.json   # Marketplace manifest and plugin registry
+synced-vendor-skills/             # Third-party skills + shared rules (skills CLI lock + .agents/skills)
 plugins/
   hyva-ai-tools/
     .cursor-plugin/plugin.json    # Plugin metadata
