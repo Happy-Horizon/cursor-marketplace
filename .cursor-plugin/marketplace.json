@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A curated set of AI plugins for Happy Horizon teams — covering Magento 2 Hyvä Theme development and beyond.",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "pluginRoot": "plugins"
   },
   "plugins": [
