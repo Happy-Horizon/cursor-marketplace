@@ -19,9 +19,19 @@ jobs:
         with:
           node-version: "24"
 
+      # Pin the allowlist before update: `skills update` may add every skill from a
+      # multi-skill repo (e.g. anthropics/skills); CI must only refresh existing keys.
+      - name: Save baseline skills lock
+        run: cp synced-vendor-skills/skills-lock.json /tmp/skills-lock.baseline.json
+
       - name: Run skills update (project scope)
         working-directory: synced-vendor-skills
         run: npx skills update -y -p
+
+      - name: Restrict lock and trees to baseline skill keys only
+        env:
+          BASELINE_LOCK: /tmp/skills-lock.baseline.json
+        run: bash scripts/restrict-skills-lock-to-baseline.sh
 
       - name: Prune extra agent skill links
         run: bash scripts/prune-synced-vendor-agent-skills.sh
@@ -32,7 +42,7 @@ jobs:
           commit-message: "[FEATURE] Refresh synced vendor skills (automated)"
           title: "[FEATURE] Refresh synced vendor skills (automated)"
           body: |
-            Automated run of `npx skills update -y -p` in `synced-vendor-skills/`, then `scripts/prune-synced-vendor-agent-skills.sh` so only `.agents/skills/` is committed (the CLI otherwise adds symlink stubs for every agent in CI). Plugin `rules/` and `skills/` symlinks are version-controlled and do not need updating when skills change.
+            Automated run of `npx skills update -y -p` in `synced-vendor-skills/`, then `scripts/restrict-skills-lock-to-baseline.sh` so the lockfile and `.agents/skills/` only contain **skills already pinned on the branch** (multi-skill repos otherwise expand the lock). Then `scripts/prune-synced-vendor-agent-skills.sh` so only `.agents/skills/` is committed (the CLI otherwise adds symlink stubs for every agent in CI). Plugin `rules/` and `skills/` symlinks are version-controlled and do not need updating when skills change.
 
             Review `synced-vendor-skills/.agents/skills/` and `synced-vendor-skills/skills-lock.json`, then merge.
           branch: feature/sync-vendor-skills
