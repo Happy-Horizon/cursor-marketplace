@@ -1,6 +1,6 @@
 ---
 name: create-frontend-component
-description: Build storefront UI components using the two-layer pattern in a vendor Components module (presentation) plus theme wrappers (data). Use when creating a frontend component, adding a product page block, new Components template, or wiring catalog_product_view layout.
+description: Build storefront UI components using the two-layer pattern in a vendor Components module (presentation) plus theme wrappers (data). Works on Classic (SCSS, data-mage-init) and Hyvä (Tailwind, Alpine.js) frontends — auto-detects stack from active theme. Use when creating a frontend component, adding a product page block, new Components template, or wiring catalog_product_view layout.
 ---
 
 # Create Frontend Component
@@ -11,36 +11,58 @@ Two-layer pattern: **presentation** in `{Vendor}_Components`, **data wiring** in
 Product attribute → theme wrapper → setData() → {Vendor}_Components template → HTML
 ```
 
-## Before you start — resolve vendor
+## Step 0 — Resolve context (always first)
 
-Determine `{Vendor}` (PascalCase, e.g. `HappyHorizon`) before any paths or module refs.
+Run before any file paths or module refs. Use `hyva-exec-shell-cmd` for shell commands (`bin/magento`, etc.).
+
+### 0a. Resolve `{Vendor}` (PascalCase, e.g. `HappyHorizon`)
 
 1. User stated vendor → use it.
 2. Else scan `app/code/` for `{Vendor}/Components` module.
-3. Else read active theme path `app/design/frontend/{Vendor}/` via theme config or `hyva-theme-list`.
+3. Else derive from active theme path (step 0b).
 4. Ambiguous → ask user.
 
-Derived values (replace `{Vendor}` everywhere):
+### 0b. Resolve `{Theme}` and theme path
 
-| Placeholder | Example (HappyHorizon) |
-|-------------|------------------------|
+1. Read active storefront theme via `bin/magento config:show design/theme/theme_id` (map ID → `app/design/frontend/{Vendor}/{Theme}/`).
+2. Fallback: if only one dir under `app/design/frontend/{Vendor}/`, use it.
+3. Still ambiguous → invoke `hyva-theme-list`, show output, ask user which theme.
+
+Theme path: `app/design/frontend/{Vendor}/{Theme}/`
+
+### 0c. Detect Frontend Stack
+
+On resolved theme path:
+
+| Signal | Stack |
+|--------|-------|
+| `web/tailwind/package.json` exists | **Hyvä** |
+| Otherwise | **Classic** |
+
+If theme path cannot be resolved → invoke `hyva-theme-list`, show output, ask user: Classic or Hyvä.
+
+Record stack for steps 5+. Read `references/{stack}-path.md` where `{stack}` is `classic` or `hyva`.
+
+### Derived placeholders
+
+| Placeholder | Example (HappyHorizon, theme=default) |
+|-------------|----------------------------------------|
 | Module | `HappyHorizon_Components` |
 | Module path | `app/code/HappyHorizon/Components/` |
 | Theme path | `app/design/frontend/HappyHorizon/default/` |
 | Asset ref | `HappyHorizon_Components::images/{file}` |
-| JS ref | `HappyHorizon_Components/js/{name}` |
+| JS ref (Classic) | `HappyHorizon_Components/js/{name}` |
 
 Reference implementation: `advice` in `{Vendor}_Components` + theme wrapper.
 
-## Checklist
+## Checklist (shared)
 
+- [ ] Step 0 complete: `{Vendor}`, `{Theme}`, Frontend Stack resolved
 - [ ] Presentation template in `app/code/{Vendor}/Components/view/frontend/templates/{name}.phtml`
 - [ ] Block registered in `app/code/{Vendor}/Components/view/frontend/layout/catalog_product_view.xml`
-- [ ] Theme wrapper in `app/design/frontend/{Vendor}/default/Magento_Catalog/templates/product/view/components/{name}.phtml`
+- [ ] Theme wrapper in `{Theme path}/Magento_Catalog/templates/product/view/components/{name}.phtml`
 - [ ] Loader block in product-type layout XML (configurable, bundle, elearning, etc.)
-- [ ] SCSS in `app/code/{Vendor}/Components/view/frontend/styles/modules/_{name}.scss` + import in `_module.scss`
-- [ ] Optional: static preview args in `example_components.xml`
-- [ ] Optional: JS in `view/frontend/web/js/` + `data-mage-init`
+- [ ] Stack-specific steps from `references/{stack}-path.md`
 
 ## Step 1 — Presentation template (module)
 
@@ -52,16 +74,18 @@ Rules:
 - Use `$escaper` for output (`escapeHtml`, `escapeUrl`, `escapeHtmlAttr`).
 - HTML content fields: `/* @noEscape */` only when CMS HTML expected.
 - Default assets: `$block->getViewFileUrl('{Vendor}_Components::images/{file}')`.
-- CSS classes: `{name}-block-{element}` (e.g. `advice-block-container`).
+- Styling: follow active stack — see `references/{stack}-path.md` (Classic: BEM classes; Hyvä: Tailwind utilities).
 
 ```php
 <?php
 /** @var \Magento\Framework\View\Element\Template $block */
+/** @var \Magento\Framework\Escaper $escaper */
 
 $description = $block->getData('description');
 $image = $block->getData('image') ?? $block->getViewFileUrl('HappyHorizon_Components::images/advice.jpg');
 ?>
-<div class="advice-block-container">
+<!-- Classic: class="advice-block-container" | Hyvä: Tailwind utility classes -->
+<div>
     ...
 </div>
 ```
@@ -80,14 +104,16 @@ Block name pattern: `product.{name}.block`.
 
 ## Step 3 — Theme wrapper (data layer)
 
-Path: `app/design/frontend/{Vendor}/default/Magento_Catalog/templates/product/view/components/{name}.phtml`
+Path: `{Theme path}/Magento_Catalog/templates/product/view/components/{name}.phtml`
 
 Pattern:
-1. Load content-block ViewModel via `$viewModels->require(...)` (project-specific class — inspect sibling wrappers).
+1. Load content-block ViewModel via `$viewModels->require(...)` — **inspect sibling wrappers** for project-specific ViewModelRegistry class and ViewModel.
 2. Read product attribute (comma-separated content block IDs).
 3. Early `return` if attribute empty or no blocks found.
 4. Map content block fields → array for component.
 5. Get layout block by name, `setData()`, `echo toHtml()`.
+
+On Hyvä: loader block class may differ from `Magento\Catalog\Block\Product\View\Description` — copy from existing wrappers in the same theme directory.
 
 ```php
 <?php
@@ -127,7 +153,7 @@ Copy patterns from existing wrappers in same directory before writing new one.
 
 ## Step 4 — Wire loader block (theme layout)
 
-Path: `app/design/frontend/{Vendor}/default/Magento_Catalog/layout/catalog_product_view_type_{type}.xml`
+Path: `{Theme path}/Magento_Catalog/layout/catalog_product_view_type_{type}.xml`
 
 Add loader inside target container:
 
@@ -145,24 +171,14 @@ Common containers:
 
 Add loader to every product type layout that needs the component (configurable, bundle, elearning).
 
-## Step 5 — Styles
+## Steps 5+ — Stack-specific
 
-1. Create `app/code/{Vendor}/Components/view/frontend/styles/modules/_{name}.scss`
-2. Add `@import "modules/{name}";` to `_module.scss`
-3. Theme imports via `app/design/frontend/{Vendor}/default/styles/_modules.scss` → `@import '../{Vendor}_Components/styles/module';`
-4. Compile theme CSS (frontools / project build)
+After steps 1–4, read and follow **`references/{stack}-path.md`**:
 
-Use existing SCSS mixins (`min-screen`, color vars). Nest under `.{name}-block`.
-
-## Step 6 — Static preview (optional)
-
-Add block + arguments to `example_components.xml` for CMS/page preview without product context.
-
-## Step 7 — JavaScript (optional)
-
-Only when component needs interactivity:
-- Place JS in `view/frontend/web/js/{name}.js`
-- Init via `data-mage-init='{"{Vendor}_Components/js/{name}": {}}'` on root element
+| Stack | Reference file | Covers |
+|-------|----------------|--------|
+| Classic | `references/classic-path.md` | SCSS, static preview, RequireJS |
+| Hyvä | `references/hyva-path.md` | Tailwind `@source`, Alpine.js, compile |
 
 ## Naming reference
 
@@ -172,7 +188,7 @@ Only when component needs interactivity:
 | Loader block | `load.product.{name}.block` | `load.product.advice.block` |
 | Module template | `{Vendor}_Components::{name}.phtml` | `HappyHorizon_Components::advice.phtml` |
 | Theme wrapper | `Magento_Catalog::product/view/components/{name}.phtml` | `.../advice.phtml` |
-| CSS root | `{name}-block-container` | `advice-block-container` |
+| CSS root (Classic) | `{name}-block-container` | `advice-block-container` |
 
 ## Reference components ({Vendor}=HappyHorizon)
 
@@ -193,4 +209,5 @@ Inspect these before creating new ones:
 - Render component block directly in theme layout without wrapper (skips data + early return).
 - Forget escaper on user/CMS output.
 - Skip product-type layout files — component won't show on all types.
-- Hardcode vendor — always resolve `{Vendor}` first.
+- Hardcode vendor or theme — always resolve `{Vendor}` and `{Theme}` first.
+- Skip stack detection — Classic and Hyvä styling/JS paths differ.
