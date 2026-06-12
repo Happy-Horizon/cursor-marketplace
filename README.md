@@ -1,4 +1,4 @@
-# Happy Horizon Cursor Marketplace
+# Happy Horizon Cursor Marketplace 
 
 A curated [Cursor Team Marketplace](https://github.com/fieldsphere/cursor-team-marketplace-template)-style registry of plugins for Happy Horizon teams — Magento 2 / Hyvä, the Horizon storefront stack, and shared frontend guidance.
 
