@@ -1,18 +1,18 @@
 ---
 name: magento-upgrade
-description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when planning or running post-upgrade regression testing, or preparing an upgrade go-live — see upgrade-testplan.md.
+description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump; when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services and execute the cloud-runnable portion of upgrade-testplan.md in that VM (do not stop at composer/compile). For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
 ---
 
 # Magento Upgrade Skill
 
 Upgrade procedure for Happy Horizon Magento 2 projects, written against the Horizon Backend monorepo
-(headless GraphQL, Hypernode Deploy). Steps 1–10 are the composer and compile mechanics; step 11 is
-the regression phase, which is where most upgrade time actually goes.
+(headless GraphQL, Hypernode Deploy). Steps 1–10 are the composer, compile and CI/deploy mechanics;
+step 11 is the regression phase, which is where most upgrade time actually goes.
 
 Details to confirm per project before following the steps literally: the `magento/product-community-edition`
-constraint style, the package pins in step 2, the PHP-version locations in step 4, and the patch
-tooling in step 7. Frontend-heavy projects (Hyvä, Page Builder) carry a whole additional regression
-surface that step 11 covers.
+constraint style, the package pins in step 2, the deploy/CI surface in step 4 (`deploy.settings.yml`,
+`.github/workflows/`, stack-specific FE keys), and the patch tooling in step 7. Frontend-heavy
+projects (Hyvä, Page Builder) carry a whole additional regression surface that step 11 covers.
 
 ## Prerequisites
 
@@ -55,20 +55,106 @@ COMPOSER_MEMORY_LIMIT=-1 php8.4 /usr/local/bin/composer update --with-all-depend
 
 Takes 5–20 minutes. Poll with `tail -f /tmp/composer-update.log`.
 
-### 4. Align PHP version configuration
+### 4. Align CI, deploy and Hypernode settings
 
-Update these four locations when the target PHP version changes:
+A Magento version bump often requires a PHP bump, and a PHP bump always requires the
+GitHub Actions / Hypernode Deploy surface to move with it. Treat this as part of the
+upgrade, not a follow-up. Full Bitbucket → GitHub + Hypernode Deploy migrations (shared
+paths, `config.php` theme dumps, `env.php` build contract) live in the
+**magento-github-hypernode-migrate** skill — this step covers only what an upgrade
+must touch.
 
-1. `horizon-deploy/defaults/magento2.yml` — scalar `php_version:` under `defaults:` (Deployer CLI **and** desired Hypernode platform PHP). On deploy, `hypernode:settings:sync` compares live values and only applies with `--block` (maintenance-wrapped) when they drift. Extra knobs such as `mysql_version` go under `hypernode_settings`.
-2. `deploy.settings.yml` — `deploy_image` tag. Prefer a **pinned** hypernode-deploy version with PHP 8.4 (e.g. `quay.io/hypernode/deploy:4.8.0-php8.4-node22`). Avoid `latest-php8.4-node22` while Magento pulls `symfony/http-client-contracts` v3+: hypernode-deploy 4.9’s `deploy:hypernode-annotation` fatals (`CurlResponse::getInfo` vs `ResponseInterface::getInfo(): mixed`) after an otherwise successful release.
-3. `bitbucket-pipelines.yml` — top-level `image:` (e.g. `experiusnl/magento-2-docker-pipeline-image-apache-php8.4`).
-4. `.github/workflows/ci.yml` — `php_version` input on the `static-code-scans` job (and the `di-compile` job’s setup-php version). The reusable workflow `happy-horizon/actions/.github/workflows/horizon-backend-magento-ci.yml` defaults to PHP 8.2, so CI `composer install` fails after an upgrade unless this input matches the new requirement. Its known inputs: `php_version`, `php_extensions`, `scan_path`.
+#### 4a. Always set `defaults.php_version` in `deploy.settings.yml`
 
-Verify no stale references remain (adapt the pattern to the version being dropped):
+```yaml
+defaults:
+  php_version: "8.4"   # must match Hypernode + Magento requirement
+```
+
+- Scalar selects Deployer CLI **and** desired Hypernode platform PHP.
+- On every deploy, `hypernode:settings:sync` compares live `hypernode-systemctl` values;
+  on drift it maintenance-wraps and applies `--block`.
+- **If omitted**, the project inherits the toolkit central default (`8.4` in
+  `happy-horizon/actions` → `horizon-deploy/defaults/magento2.yml`). The deploy log
+  then looks like `php_version (unknown) → 8.4` even when the node was already correct.
+- `deploy_image` PHP tag alone does **not** pin platform PHP.
+- Extra knobs such as `mysql_version` go under `hypernode_settings`, not as a substitute
+  for `php_version`.
+
+#### 4b. Pin `deploy_image` (per environment)
+
+```yaml
+environments:
+  staging:
+    deploy_image: quay.io/hypernode/deploy:4.8.0-php8.4-node22
+  production:
+    deploy_image: quay.io/hypernode/deploy:4.8.0-php8.4-node22
+```
+
+| Need | Image pattern |
+|---|---|
+| Modern Magento / Hyvä / headless | `4.8.0-php8.x-node20` or `…-node22` |
+| Legacy Node 12 / PHP 7.4 (Snowdog) | `4.2.0-php7.4-node12` |
+
+**Pin below 4.9.** hypernode-deploy 4.9+ can fatal on Magento’s Symfony
+`http-client-contracts` v3 (`CurlResponse::getInfo` vs `ResponseInterface::getInfo(): mixed`)
+via `deploy:hypernode-annotation` after an otherwise successful release. Avoid
+`latest-php8.4-node22` while it tracks 4.9.
+
+Resolution order: workflow `deploy_image` input → `environments.<stage>.deploy_image` →
+toolkit fallback. Prefer pinning in YAML so `build.yml` / deploy workflows stay thin.
+
+#### 4c. Update `.github/workflows/`
+
+Reusable workflows from `happy-horizon/actions@production`:
+
+| File | What to align on upgrade |
+|---|---|
+| `ci.yml` | `with.php_version` (and `composer_version` if Magento still needs Composer 2.2). The reusable `horizon-backend-magento-ci.yml` **defaults to PHP 8.2**, so omitting the input breaks `composer install` after an 8.3/8.4 Magento bump. Also keep any dedicated `di-compile` / `setup-php` job on the same PHP. Known inputs: `php_version`, `php_extensions`, `scan_path`, `composer_version`. |
+| `build.yml` | Optional `with.deploy_image` pin (NRG-style). Usually omit and inherit the YAML stage image. |
+| `deploy-staging.yml` / `deploy-production.yml` | Confirm `environment_url` and that they still `uses: happy-horizon/actions/…@production`. No PHP input here — PHP comes from `deploy.settings.yml`. |
+| `preview.yml` | Keep skipped (`if: false`); nested reusable `uses:` fails permissions validation even when disabled. |
+
+Ensure `.github` is **not** gitignored (horizon-backend has `#.github` commented — do not
+uncomment). If the project is still on Bitbucket only, migrating workflows is a
+**magento-github-hypernode-migrate** job, not an upgrade side-quest.
+
+#### 4d. Bitbucket pipelines (if still present)
+
+Update the top-level `image:` (e.g. `experiusnl/magento-2-docker-pipeline-image-apache-php8.4`).
+Keep the file until staging is green on GitHub Actions — both Bitbucket and Hypernode Deploy
+paths sit in central `deploy_excludes`.
+
+#### 4e. Stack-specific `deploy.settings.yml` keys to re-check
+
+Workflow files are nearly identical across stacks; differences live in YAML (+ CI inputs).
+After a Magento / PHP bump, confirm the keys that match the project’s stack still make sense:
+
+| Stack | Keys to verify |
+|---|---|
+| Headless GraphQL (`horizon-backend`) | Thin YAML: `php_version` + environments (+ `cron_config` / `nginx_config` when `.hypernode/` trees exist). No snowdog/hyvä keys. Omitting `magento_themes` inherits central themes (`Magento/backend`) and **still runs SCD** — that is expected. |
+| Hyvä Tailwind | `hyva_tailwind_dirs` (theme `web/tailwind` path(s)); `high_performance_static_deploy: true` needs Deploy **4.8+**. Set `high_performance_static_deploy: false` if custom modules ship frontend assets under `app/code/*/view/*/web` (Go SCD does not copy `app/code`). Keep `dev/css/minify_files` and `dev/js/minify_files` at `'0'` in committed `app/etc/config.php` — Magento minify requests `*.min.*` and 404s under HPSD; Tailwind `--minify` owns CSS. |
+| Legacy Snowdog / Gulp | `snowdog_frontools_dirs`, `snowdog_frontools_node_version`; Node 12 images stop at hypernode-deploy **4.2.x**. Locale-map `magento_themes` needs Deploy 4.8+ — on 4.2 keep list form + `static_content_locales`. |
+| Experius Connector projects | Same as Snowdog/Hyvä for FE keys; the build has **no DB**, so committed `app/etc/config.php` must carry `themes` + `scopes`. Do not stub a `db` block into build `env.php` — see migrate skill pitfalls (`No database connection…` / `Connection refused`). |
+
+Admin themes belong under `magento_themes_backend`, not `magento_themes` — split SCD deploys
+the latter as `--area=frontend` (only `Magento/backend` is auto-routed to adminhtml).
+
+Staging `deploy_path: /data/web/deploy-staging` is required **only** when staging and
+production share one Hypernode hostname; otherwise omit and keep the central
+`/data/web/deploy` default on each node.
+
+#### 4f. Sweep for stale PHP / image references
+
+Adapt the pattern to the version being dropped:
 
 ```bash
-grep -rn "8\.2\|php8\.2" horizon-deploy/ .github/ deploy.settings.yml bitbucket-pipelines.yml
+grep -rn "8\.2\|php8\.2\|php7\.4\|4\.2\.0-php\|latest-php" \
+  deploy.settings.yml .github/ bitbucket-pipelines.yml horizon-deploy/ 2>/dev/null
 ```
+
+Confirm the deploy log after the first post-upgrade release: `php_version` sync must stay
+on the pinned value (not `(unknown) → 8.4`).
 
 ### 5. Sync `magento/magento2-base` skeleton files
 
@@ -145,9 +231,11 @@ Use separate commits:
 
 - **Commit A** — `composer.json`, `composer.lock`, `patches.lock.json` (if changed), `composer.patches.json` (if changed), `patches/` (new local patch files).
 - **Commit B** — All base skeleton files from `magento/magento2-base` (`app/`, `bin/`, `dev/`, `lib/`, `pub/`, `setup/`, `.php-cs-fixer.dist.php`).
-- **Commit C** (if needed) — CI / skill / deploy PHP-version knobs.
+- **Commit C** (if needed) — `deploy.settings.yml` (`php_version`, `deploy_image`, stack FE keys),
+  `.github/workflows/ci.yml` (and related workflow PHP / image pins), `bitbucket-pipelines.yml`.
 
-Commit message format: `[TYPE][TICKET] Summary in imperative mood` (TYPE: FEATURE / BUGFIX / HOTFIX / REFACTOR). Ask the user for the ticket if not known — never invent one.
+Commit message format follows the target repo (e.g. `TICKET - …` or `[TYPE][TICKET] …`). Ask the
+user for the ticket if not known — never invent one.
 
 Do NOT commit: `vendor/`, `auth.json`, `app/etc/env.php`, `generated/`.
 
@@ -158,12 +246,32 @@ compile work above was budgeted at 2 days; the regression phase that follows ran
 produced 60+ tickets. Do not treat the upgrade as done, or hand it to testers, before walking
 [upgrade-testplan.md](upgrade-testplan.md).
 
-That plan gates on two things this skill does not cover: an environment readiness check (a stale DB,
-unsynced CMS content or a non-whitelisted reCAPTCHA domain generates defects that are not defects),
-and automated sweeps for runtime deprecations, console errors, missing assets and visual deltas
-against production — each of which replaces a batch of hand-filed tickets. It also collects the
-settings that live in the database rather than git, so go-live is a runbook instead of a click list
-reconstructed under time pressure.
+That plan gates on environment readiness (stale DB / missing CMS / reCAPTCHA domain → false
+defects), automated sweeps (deprecations, console errors, missing assets, visual deltas), and the
+database-only settings that must be re-applied at go-live.
+
+#### Cursor Cloud agents — execute the test plan in the VM
+
+When this skill runs in a **Cursor Cloud** agent (or any isolated cloud VM with the Magento
+services available), **stopping after step 8–10 is incorrect**. After compile is green:
+
+1. Read the project’s cloud instructions (`AGENTS.md`, `.cursor/CLOUD.md`, or equivalent) and
+   **start required services** (MySQL, OpenSearch/Elasticsearch, PHP-FPM / built-in server). They
+   are often not auto-started on a fresh VM.
+2. Open [upgrade-testplan.md](upgrade-testplan.md) and run every check marked **cloud-runnable**
+   there (Phase B sweeps, GraphQL/HTTP smoke, static scans, log crawls, asset 404 checks). Prefer
+   the project’s documented smoke tests (e.g. headless GraphQL `storeConfig` + `products` search).
+3. Record results in the PR / agent summary as `pass` / `fail` / `env-artifact` / `blocked-needs-human`
+   per the test plan’s triage rules. Fix `fail` items that are in scope for the upgrade branch
+   before declaring the upgrade complete.
+4. Explicitly list what could **not** be run in cloud (production visual diffs, tablet viewports,
+   paid gateways, FTP, reCAPTCHA domain whitelist, full checkout with real payment) as
+   `blocked-needs-human` — do not silently skip them or mark them pass.
+5. Do **not** claim “upgrade done” or hand off to human testers until the cloud-runnable portion
+   has been executed and reported.
+
+Local / laptop agents should still walk the same plan; cloud simply has no excuse to skip the
+parts the VM can exercise.
 
 ## Known Upgrade History
 

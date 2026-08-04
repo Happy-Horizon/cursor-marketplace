@@ -15,8 +15,80 @@ kept so each point stays auditable — drop a point only when you can argue the 
    environment is trustworthy and the automated sweeps are clean produces false findings that cost
    more than the upgrade. In NRC-210 at least six tickets were closed as environment artifacts or
    pre-existing production defects (NRC-338, NRC-372, NRC-412, NRC-449, NRC-450, NRC-451).
-3. Record per point: `pass` / `fail` / `differs-from-live` / `pre-existing` / `env-artifact`.
-   Only `fail` and `differs-from-live` become tickets.
+3. Record per point: `pass` / `fail` / `differs-from-live` / `pre-existing` / `env-artifact` /
+   `blocked-needs-human`. Only `fail` and `differs-from-live` become tickets.
+4. **Cursor Cloud agents must execute the cloud-runnable portion in the VM** after
+   `setup:di:compile` is green — see [Cursor Cloud agent execution](#cursor-cloud-agent-execution).
+   Do not stop at composer/compile and leave this plan for humans.
+
+## Cursor Cloud agent execution
+
+When the upgrade runs in a Cursor Cloud agent (or equivalent cloud VM), the agent **owns** every
+check that the VM can exercise. Human / staging / production-comparison work stays marked
+`blocked-needs-human`; everything else is executed and reported before the agent finishes.
+
+### Boot the environment first
+
+Follow the project’s cloud docs (`AGENTS.md` / similar). Typical Magento cloud VM pattern:
+
+1. Start MySQL and the search engine (OpenSearch/Elasticsearch — Elasticsuite needs phonetic/ICU
+   plugins when the project uses Smile Elasticsuite).
+2. Ensure `app/etc/env.php` exists for runtime (gitignored; create from project secrets / sample if
+   needed). Compile may use a minimal stub; smoke tests need a real DB connection.
+3. Serve the app (e.g. `php -S 0.0.0.0:8080 -t pub phpserver/router.php` or the project’s documented
+   command). Confirm base URL responds.
+4. Reindex if the DB was freshly imported: `bin/magento indexer:reindex`.
+
+### What the agent MUST run (cloud-runnable)
+
+| Plan ref | Action in cloud VM |
+|---|---|
+| B1 | Hit key routes / GraphQL operations with `MAGE_MODE=developer`; tail `var/log/*` and `var/report/*`; every `Deprecated Functionality` is a `fail` |
+| B3 | HTTP-check generated assets on those routes for 404s (`*.min.css` / `*.min.js`, theme and `app/code` web assets) |
+| B6 | Static scans at the **target** PHP version (`phpcs`, `phpmd`, project CI commands) |
+| B7 | Grep `app/code` and `app/design` for template helper access without fallback; fix or ticket hits |
+| Headless smoke | Project GraphQL smoke (at minimum `storeConfig` and a `products` search on a store code) |
+| Storefront smoke | `curl` (or browser MCP if available) home, category, PDP, search, customer login page — expect HTTP 200 and no fatal in logs |
+| Admin smoke | If admin is reachable: login page loads; opening a known order/product URL does not 500 |
+| Unit / suite | Run project PHPUnit / testsuite when the autoloader gotcha is handled (see project `AGENTS.md`) |
+
+Example headless smoke (adapt host/store from the project):
+
+```bash
+curl -s -X POST http://localhost:8080/graphql -H "Content-Type: application/json" \
+  -d '{"query":"{ storeConfig { store_code store_name } }"}'
+curl -s -X POST http://localhost:8080/graphql -H "Content-Type: application/json" -H "Store: nl" \
+  -d '{"query":"{ products(search: \"bag\", pageSize: 3){ total_count items{ sku name } } }"}'
+```
+
+Example log crawl after hitting routes:
+
+```bash
+rg -n "Deprecated Functionality|Fatal error|exception" var/log var/report 2>/dev/null || true
+```
+
+### What the agent marks `blocked-needs-human` (do not fake pass)
+
+| Plan ref | Why cloud cannot finish it |
+|---|---|
+| A1–A8 | Needs a recent production DB/media sync, domain whitelist, paid subscriptions, client credentials |
+| B2 | Needs a real browser console capture (use browser MCP if the cloud agent has it; otherwise human) |
+| B4–B5 | Needs production screenshots / JS-disabled visual comparison |
+| C–D visual / device matrix | Mobile/tablet/desktop parity and Hyvä styling need staging + human or Playwright against a seeded storefront |
+| D end-to-end paid checkout | Real payment / mail / confirmation email images |
+| E deep admin | Grid/UX checks beyond “does not 500” |
+| F integrations | FTP, feeds, GA4 measurement plan against live GTM |
+| G go-live config | Collect during staging test; agent may *list* Phase G candidates found in code/config diffs |
+
+### Agent exit report (required)
+
+Before ending the cloud session, post a short report (PR comment or agent summary) with:
+
+1. Services started and base URL used.
+2. Table of cloud-runnable checks with `pass` / `fail` / `env-artifact`.
+3. Fixes committed for any in-scope `fail`, or explicit tickets/todos for the rest.
+4. Bullet list of `blocked-needs-human` items left for staging / client UAT.
+5. Statement that compile **and** cloud-runnable test-plan execution completed (or what blocked boot).
 
 ## Phase A — Environment readiness gate
 
