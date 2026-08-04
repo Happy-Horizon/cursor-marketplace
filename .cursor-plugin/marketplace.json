@@ -13,7 +13,7 @@
     {
       "name": "hyva-ai-tools",
       "source": "hyva-ai-tools",
-      "description": "AI-powered skills for Magento 2 development with Hyvä Theme — Alpine components, CMS components, child themes, modules, Playwright tests, and more"
+      "description": "AI-powered skills for Magento 2 development with Hyvä Theme — Alpine components, CMS components and custom fields, child themes, modules, Tailwind compilation, Playwright tests, and more (vendored from hyva-themes/hyva-ai-tools)"
     },
     {
       "name": "magento2-development",

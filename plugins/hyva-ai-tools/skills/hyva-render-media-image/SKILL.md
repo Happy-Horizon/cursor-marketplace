@@ -18,14 +18,30 @@ Generate responsive `<picture>` elements for Hyvä Theme templates using the `\H
 
 ### 1. Gather Image Requirements
 
-Ask for:
-1. **Image path(s)** — Location in `pub/media/` (e.g., `wysiwyg/hero.jpg`)
-2. **Image dimensions** — Width and height in pixels
-3. **Responsive requirements** — Different images for mobile vs desktop?
-4. **Image purpose** — Hero/LCP image (eager loading) or below-fold (lazy loading)?
-5. **Alt text** — Meaningful description for accessibility
+The user may provide image data in one of these ways:
+
+**Option A: Direct values** - Ask the user for:
+1. **Image path(s)** - Location in `pub/media/` (e.g., `wysiwyg/hero.jpg`, `catalog/product/...`)
+2. **Image dimensions** - Width and height in pixels
+3. **Responsive requirements** - Different images for mobile vs desktop?
+4. **Image purpose** - Hero/LCP image (eager loading) or below-fold (lazy loading)?
+5. **Alt text** - Meaningful description for accessibility
+
+**Option B: PHP variable** - The user provides a variable name (e.g., `$imageData`, `$heroImage`). Inform the user of the required array structure documented in `references/rendering-images.md` under `## Image Configuration Format`.
 
 ### 2. Generate the Code
+
+Refer to `references/rendering-images.md` for the complete API reference, code examples, and all configuration options.
+
+**Choose the appropriate pattern:**
+
+| Scenario | Pattern to Use |
+|----------|---------------|
+| Single image, literal values | Single Image Example |
+| Single image from variable | Wrap in array: `[$imageData]` |
+| Multiple images from variable | Pass directly: `$images` |
+| Different images for mobile/desktop | Responsive Images with Media Queries |
+| Need to style the `<picture>` wrapper | Picture Element Attributes |
 
 **Base template:**
 
@@ -35,20 +51,11 @@ Ask for:
 $mediaViewModel = $viewModels->require(\Hyva\Theme\ViewModel\Media::class);
 
 echo $mediaViewModel->getResponsivePictureHtml(
-    $images,           // Array of image configs
-    $imgAttributes,    // Optional: alt, class, loading, fetchpriority
+    $images,        // Array of image configs (see reference for format)
+    $imgAttributes, // Optional: alt, class, loading, fetchpriority
     $pictureAttributes // Optional: class, data-* attributes for <picture>
 );
 ```
-
-**Choose the appropriate pattern:**
-
-| Scenario | Pattern |
-|----------|---------|
-| Single image, literal values | Single Image Example |
-| Single image from variable | Wrap in array: `[$imageData]` |
-| Multiple images from variable | Pass directly: `$images` |
-| Different images for mobile/desktop | Responsive Images with Media Queries |
 
 ### 3. Set Loading Strategy
 
@@ -57,62 +64,8 @@ echo $mediaViewModel->getResponsivePictureHtml(
 | Hero/LCP (above fold) | `'loading' => 'eager', 'fetchpriority' => 'high'` |
 | Below fold | `'loading' => 'lazy'` |
 
-## Single Image Example
+## Resources
 
-```php
-<?php
-$mediaViewModel = $viewModels->require(\Hyva\Theme\ViewModel\Media::class);
+- `references/rendering-images.md` - Complete API reference with method signature, all configuration options, code examples, and best practices
 
-$images = [
-    [
-        'src'    => 'wysiwyg/banner.jpg',
-        'width'  => 1440,
-        'height' => 600,
-    ]
-];
-
-echo $mediaViewModel->getResponsivePictureHtml(
-    $images,
-    ['alt' => 'Banner', 'class' => 'w-full h-auto', 'loading' => 'lazy']
-);
-?>
-```
-
-## Responsive Images with Media Queries
-
-```php
-<?php
-$images = [
-    [
-        'src'    => 'wysiwyg/hero-mobile.jpg',
-        'width'  => 768,
-        'height' => 500,
-        'media'  => '(max-width: 767px)',
-    ],
-    [
-        'src'    => 'wysiwyg/hero-desktop.jpg',
-        'width'  => 1440,
-        'height' => 600,
-        'media'  => '(min-width: 768px)',
-    ],
-];
-
-echo $mediaViewModel->getResponsivePictureHtml(
-    $images,
-    ['alt' => 'Hero Banner', 'loading' => 'eager', 'fetchpriority' => 'high']
-);
-?>
-```
-
-## Using with CMS Component Data
-
-```php
-$image = $block->getData('image');
-
-if ($image) {
-    echo $mediaViewModel->getResponsivePictureHtml(
-        $image,
-        ['class' => 'w-full h-auto', 'loading' => 'lazy']
-    );
-}
-```
+<!-- Copyright © Hyvä Themes https://hyva.io. All rights reserved. Licensed under OSL 3.0 -->
