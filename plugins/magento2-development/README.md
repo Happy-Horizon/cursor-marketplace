@@ -13,6 +13,9 @@ Cursor plugin providing rules and best practices for Magento 2 / Adobe Commerce 
 
 ### Skills
 
+- **m2-create-frontend-component** - Building storefront UI components with the two-layer pattern:
+  presentation in a `{Vendor}_Components` module, data wiring in the theme. Auto-detects Classic
+  (SCSS, `data-mage-init`) versus Hyvä (Tailwind, Alpine.js) from the active theme.
 - **magento-upgrade** - Upgrading Magento Open Source to a new patch or minor version: composer
   constraint and conflict handling, PHP-version alignment, `magento2-base` skeleton sync, Symfony
   `Command::execute(): int` breakage, patch validation, and `setup:di:compile` verification. Includes
@@ -35,6 +38,6 @@ debugging patches that appear to do nothing.
 
 ## Customization
 
-Both skills are written against the Horizon Backend monorepo; confirm package pins, PHP-version
-locations, patch directory layout and patch tooling against the project at hand. Edit `rules/*.mdc`
-to add team-specific Magento 2 guidelines.
+The upgrade and patches skills are written against the Horizon Backend monorepo; confirm package
+pins, PHP-version locations, patch directory layout and patch tooling against the project at hand.
+Edit `rules/*.mdc` to add team-specific Magento 2 guidelines.
