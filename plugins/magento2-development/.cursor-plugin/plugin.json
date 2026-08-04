@@ -1,8 +1,8 @@
 {
   "name": "magento2-development",
   "displayName": "Magento 2 Development",
-  "version": "0.1.0",
-  "description": "Rules and best practices for Magento 2 development",
+  "version": "0.2.0",
+  "description": "Rules and best practices for Magento 2 development, plus skills for version upgrades (composer conflicts, setup:di:compile failures, post-upgrade regression testing) and patching with cweagans/composer-patches (Adobe isolated security patches, porting patches that no longer apply, patch-status verification)",
   "author": {
     "name": "Lewis Voncken",
     "email": "lewisvoncken@happyhorizon.com"
