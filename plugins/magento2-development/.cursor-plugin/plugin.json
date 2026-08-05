@@ -1,8 +1,8 @@
 {
   "name": "magento2-development",
   "displayName": "Magento 2 Development",
-  "version": "0.3.0",
-  "description": "Rules and best practices for Magento 2 development, plus skills for version upgrades (composer, CI/deploy PHP alignment, setup:di:compile, post-upgrade regression testing), patching with cweagans/composer-patches, and migrating Magento Hypernode projects to GitHub Actions + deploy.settings.yml",
+  "version": "0.4.0",
+  "description": "Rules and best practices for Magento 2 development, plus skills for version upgrades (composer, CI/deploy PHP alignment, setup:di:compile, post-upgrade regression testing with browser E2E and PR artifacts), patching with cweagans/composer-patches, and migrating Magento Hypernode projects to GitHub Actions + deploy.settings.yml",
   "author": {
     "name": "Lewis Voncken",
     "email": "lewisvoncken@happyhorizon.com"

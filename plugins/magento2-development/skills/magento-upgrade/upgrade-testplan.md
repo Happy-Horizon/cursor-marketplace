@@ -19,7 +19,9 @@ kept so each point stays auditable — drop a point only when you can argue the 
    `blocked-needs-human`. Only `fail` and `differs-from-live` become tickets.
 4. **Cursor Cloud agents must execute the cloud-runnable portion in the VM** after
    `setup:di:compile` is green — see [Cursor Cloud agent execution](#cursor-cloud-agent-execution).
-   Do not stop at composer/compile and leave this plan for humans.
+   That includes [Phase H](#phase-h--browser-end-to-end-mandatory) (browser E2E with offline
+   payment + PR artifacts) when a storefront URL exists. Do not stop at composer/compile and
+   leave this plan for humans.
 
 ## Cursor Cloud agent execution
 
@@ -44,11 +46,14 @@ Follow the project’s cloud docs (`AGENTS.md` / similar). Typical Magento cloud
 | Plan ref | Action in cloud VM |
 |---|---|
 | B1 | Hit key routes / GraphQL operations with `MAGE_MODE=developer`; tail `var/log/*` and `var/report/*`; every `Deprecated Functionality` is a `fail` |
+| B2 | During Phase H browser flows, capture console errors (browser MCP / computer use). If no browser is available, mark B2 `blocked-needs-human` — do not fake pass |
 | B3 | HTTP-check generated assets on those routes for 404s (`*.min.css` / `*.min.js`, theme and `app/code` web assets) |
 | B6 | Static scans at the **target** PHP version (`phpcs`, `phpmd`, project CI commands) |
 | B7 | Grep `app/code` and `app/design` for template helper access without fallback; fix or ticket hits |
 | Headless smoke | Project GraphQL smoke (at minimum `storeConfig` and a `products` search on a store code) |
 | Storefront smoke | `curl` (or browser MCP if available) home, category, PDP, search, customer login page — expect HTTP 200 and no fatal in logs |
+| **H0–H5** | [Phase H](#phase-h--browser-end-to-end-mandatory): SKU hygiene, guest checkout to a **real order** with **offline payment**, account lifecycle, hydration ATC smoke, **PR artifacts**, pre-existing ledger. Required when a storefront URL can be started or supplied |
+| GraphQL E2E fallback | If **no** storefront URL: run GraphQL `createEmptyCart` → `addProductsToCart` → set shipping → set payment (`checkmo` / offline) → `placeOrder`; report browser H1/H2 as `blocked-needs-human`. Do **not** mark browser E2E `pass` without a recording |
 | Admin smoke | If admin is reachable: login page loads; opening a known order/product URL does not 500 |
 | Unit / suite | Run project PHPUnit / testsuite when the autoloader gotcha is handled (see project `AGENTS.md`) |
 
@@ -72,10 +77,11 @@ rg -n "Deprecated Functionality|Fatal error|exception" var/log var/report 2>/dev
 | Plan ref | Why cloud cannot finish it |
 |---|---|
 | A1–A8 | Needs a recent production DB/media sync, domain whitelist, paid subscriptions, client credentials |
-| B2 | Needs a real browser console capture (use browser MCP if the cloud agent has it; otherwise human) |
+| B2 | Only when no browser / computer-use is available in the agent |
 | B4–B5 | Needs production screenshots / JS-disabled visual comparison |
 | C–D visual / device matrix | Mobile/tablet/desktop parity and Hyvä styling need staging + human or Playwright against a seeded storefront |
-| D end-to-end paid checkout | Real payment / mail / confirmation email images |
+| D / H paid gateways | Real redirect/paid methods (iDEAL, Afterpay, cards, PayPal, etc.) and order-confirmation **email** image QA — **not** offline `checkmo` / Check Money order, which **is** cloud-runnable in Phase H |
+| H1–H4 browser | Only when no storefront URL can be started or supplied (then use GraphQL E2E fallback) |
 | E deep admin | Grid/UX checks beyond “does not 500” |
 | F integrations | FTP, feeds, GA4 measurement plan against live GTM |
 | G go-live config | Collect during staging test; agent may *list* Phase G candidates found in code/config diffs |
@@ -84,11 +90,13 @@ rg -n "Deprecated Functionality|Fatal error|exception" var/log var/report 2>/dev
 
 Before ending the cloud session, post a short report (PR comment or agent summary) with:
 
-1. Services started and base URL used.
-2. Table of cloud-runnable checks with `pass` / `fail` / `env-artifact`.
-3. Fixes committed for any in-scope `fail`, or explicit tickets/todos for the rest.
-4. Bullet list of `blocked-needs-human` items left for staging / client UAT.
-5. Statement that compile **and** cloud-runnable test-plan execution completed (or what blocked boot).
+1. Services started, Magento base URL, and storefront URL used (or “none — GraphQL fallback”).
+2. Table of cloud-runnable checks with `pass` / `fail` / `env-artifact` (include H0–H5 or GraphQL fallback).
+3. Phase H artifact links (video + order screenshot). Cloud agents: “E2E pass” **without** artifacts is invalid.
+4. Pre-existing ledger (H5): issues reproduced on previous Magento / raw GraphQL / production.
+5. Fixes committed for any in-scope `fail`, or explicit tickets/todos for the rest.
+6. Bullet list of `blocked-needs-human` items left for staging / client UAT.
+7. Statement that compile **and** cloud-runnable test-plan execution (including Phase H or GraphQL fallback) completed (or what blocked boot).
 
 ## Phase A — Environment readiness gate
 
@@ -161,7 +169,8 @@ missed twice because testing covered desktop and mobile only (NRC-338).
 
 ## Phase D — Cart and checkout
 
-Highest defect density in NRC-210. Test with a **real order placed end to end**.
+Highest defect density in NRC-210. Visual / device-matrix checks stay here; the **mandatory agent
+executable path** (guest order + account + artifacts) is [Phase H](#phase-h--browser-end-to-end-mandatory).
 
 - Quantity field shows multi-digit values (36 must not render as 3) (NRC-396)
 - Discount code field position, placeholder, and button alignment (NRC-395, NRC-443)
@@ -178,6 +187,100 @@ Highest defect density in NRC-210. Test with a **real order placed end to end**.
 - UI strings match production, including ones only fixable via inline translation or the theme's
   `i18n/nl_NL.csv` (NRC-400, NRC-457)
 - Order confirmation email: logo, product images, layout (NRC-451)
+
+## Phase H — Browser end-to-end (mandatory)
+
+Modeled on [Horizon-Storefront#330](https://github.com/Happy-Horizon/Horizon-Storefront/pull/330):
+full browser flows with **video + screenshot artifacts** in the PR / agent summary. This is the
+minimum interaction E2E for an upgrade — `curl` HTTP 200 is not enough when a storefront exists.
+
+Use whatever FE the project has:
+
+| Project shape | Browser target | Magento under test |
+|---|---|---|
+| Headless (Horizon Backend + Horizon Storefront / client Next app) | Storefront base URL pointed at upgraded GraphQL | Upgrade candidate (cloud VM Magento, or staging deploy of the upgrade branch) |
+| Magento FE (Hyvä / Luma) | Magento storefront base URL | Same Magento instance |
+
+Agents use browser MCP / computer use when available. If the project already has Playwright (or
+similar), use it — do **not** invent a new test framework. Prefer offline payment (`checkmo` /
+Check Money order) so a real order can be placed without paid gateways.
+
+### H0 — Preconditions
+
+1. Magento under test is the **upgrade candidate** (not an unrelated shared staging on the old version
+   unless that *is* the upgrade branch deploy).
+2. Resolve storefront URL: env var / user-provided / start the project FE. For headless, GraphQL URL
+   must point at that Magento.
+3. Pick a **Simple** product SKU, or a configurable **child** that GraphQL can add. Prove before the
+   browser: `products` search finds it, and `addProductsToCart` succeeds. Skip parent configurables
+   and VirtualProducts that reject shipping (PR #330: broken demo SKUs caused false checkout fails).
+4. Confirm an offline / non-redirect payment method is enabled (`checkmo` or equivalent).
+5. If reCAPTCHA blocks registration on the test domain, record A5 and continue H1; mark H2
+   `blocked-needs-human` only if account flows cannot proceed.
+
+### H1 — Guest checkout → order placed
+
+Pass **only** when the success page shows a real order number.
+
+1. Category (or search) → PDP → add to cart → cart.
+2. Checkout address → shipping (e.g. Flat Rate) → offline payment (Check / Money order).
+3. Place order → success URL with order number (e.g. `#000001420`).
+4. During the flow, note payment methods offered; do not require paid gateways for pass.
+5. Capture: full-flow video + order-confirmation screenshot (see H4).
+
+### H2 — Account lifecycle
+
+1. Register a new customer (ends logged in).
+2. Open protected pages (e.g. `/customer/account/orders`, `/customer/account/edit` — adapt locale
+   prefix for headless storefronts).
+3. Logout → login again with the same credentials.
+4. If logged-out access to a protected page fails to reach the login form, compare to the previous
+   Magento / baseline and file under H5 as `pre-existing` when it reproduces — do not silent-skip.
+
+### H3 — Hydration / add-to-cart smoke
+
+After any related FE or Magento cart-path change in the same branch (or as a quick re-check after
+H1): add to cart produces immediate UI feedback (toast, minicart, and/or cart badge). Catches
+hydration regressions that still return HTTP 200.
+
+### H4 — Artifacts (required for cloud / PR)
+
+Cloud agents and any agent that claims H1/H2 `pass` must attach proof:
+
+| Artifact | Suggested filename |
+|---|---|
+| Guest checkout recording | `guest_checkout_catalog_to_order_placed.mp4` |
+| Account lifecycle recording | `account_register_protected_pages_logout_login.mp4` |
+| Order confirmation still | screenshot of success page showing the order number |
+
+- Save under the agent artifact dir when available (`/opt/cursor/artifacts/…`).
+- Embed in the PR body / agent summary like PR #330: linked video thumbs and
+  `![Order confirmation …](https://cursor.com/artifacts/…)` (or the platform’s equivalent artifact
+  URLs).
+- Exit report must list artifact URLs. **“E2E pass” without artifacts is invalid** for cloud agents.
+
+### H5 — Pre-existing ledger
+
+In the PR / agent summary, keep a separate section for issues found during E2E that reproduce on:
+
+- the previous Magento version, and/or
+- raw Magento GraphQL with no storefront, and/or
+- production.
+
+Do **not** fix out-of-scope storefront bugs on the Magento upgrade branch unless the user agrees.
+Do **not** blame the Magento bump for catalog data defects proven via GraphQL alone.
+
+### GraphQL placeOrder fallback (no storefront)
+
+When no storefront URL exists, still prove Magento checkout in cloud:
+
+```text
+createEmptyCart → addProductsToCart → setShippingAddressesOnCart →
+setShippingMethodsOnCart → setPaymentMethodOnCart (checkmo) → placeOrder
+```
+
+Report the order number. Mark browser H1–H4 `blocked-needs-human` (no recording). This fallback
+does **not** satisfy H1 `pass` for projects that have a storefront URL available.
 
 ## Phase E — Admin / backoffice
 
@@ -231,8 +334,9 @@ Applying these at intake, rather than after investigation, is where most of the 
 
 ## Exit criteria before go-live
 
-- Phases A–G walked, every point recorded, no open `fail`.
+- Phases A–H walked, every point recorded, no open `fail`.
+- Phase H1 passed with a real order number and artifacts (or GraphQL fallback documented when no FE).
 - Automated sweeps (B1–B7) clean on the release candidate, re-run after the last fix.
 - Phase G list complete, with each entry either scripted as a data patch or scheduled in the go-live runbook.
-- Pre-existing production defects explicitly listed as out of scope and agreed with the client.
+- Pre-existing production defects (including H5) explicitly listed as out of scope and agreed with the client.
 - Rollback trigger agreed, and post-deploy error-rate monitoring ready.

@@ -1,13 +1,14 @@
 ---
 name: magento-upgrade
-description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump; when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services and execute the cloud-runnable portion of upgrade-testplan.md in that VM (do not stop at composer/compile). For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
+description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump; when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services, run the cloud-runnable portion of upgrade-testplan.md, and execute Phase H browser end-to-end testing (guest checkout with offline payment to a real order, account lifecycle) with video/screenshot artifacts in the PR — do not stop at composer/compile or curl smoke. For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
 ---
 
 # Magento Upgrade Skill
 
 Upgrade procedure for Happy Horizon Magento 2 projects, written against the Horizon Backend monorepo
 (headless GraphQL, Hypernode Deploy). Steps 1–10 are the composer, compile and CI/deploy mechanics;
-step 11 is the regression phase, which is where most upgrade time actually goes.
+step 11 is the regression phase (including Phase H browser E2E with PR artifacts), which is where
+most upgrade time actually goes.
 
 Details to confirm per project before following the steps literally: the `magento/product-community-edition`
 constraint style, the package pins in step 2, the deploy/CI surface in step 4 (`deploy.settings.yml`,
@@ -247,8 +248,34 @@ produced 60+ tickets. Do not treat the upgrade as done, or hand it to testers, b
 [upgrade-testplan.md](upgrade-testplan.md).
 
 That plan gates on environment readiness (stale DB / missing CMS / reCAPTCHA domain → false
-defects), automated sweeps (deprecations, console errors, missing assets, visual deltas), and the
-database-only settings that must be re-applied at go-live.
+defects), automated sweeps (deprecations, console errors, missing assets, visual deltas),
+**Phase H browser end-to-end** (guest order + account + artifacts), and the database-only settings
+that must be re-applied at go-live.
+
+#### Phase H — browser E2E with artifacts (mandatory when a storefront exists)
+
+Compile + GraphQL/`curl` smoke are necessary but not sufficient. After those are green, run
+**Phase H** in [upgrade-testplan.md](upgrade-testplan.md) (pattern from
+[Horizon-Storefront#330](https://github.com/Happy-Horizon/Horizon-Storefront/pull/330)):
+
+1. **H0** — Point the project FE at the upgraded Magento (headless: storefront GraphQL URL =
+   upgrade candidate; Hyvä/Luma: Magento storefront URL). Validate a Simple/child SKU via GraphQL
+   `addProductsToCart` before opening a browser.
+2. **H1** — Guest checkout: category → PDP → cart → address → shipping → **offline payment**
+   (`checkmo` / Check Money order) → success page with a **real order number**. Paid gateways
+   stay `blocked-needs-human`; offline order placement is required.
+3. **H2** — Account: register → protected pages while logged in → logout → login.
+4. **H3** — Add-to-cart shows immediate UI feedback (toast / minicart / badge).
+5. **H4** — Attach video + order-confirmation screenshot to the PR / agent summary
+   (`guest_checkout_catalog_to_order_placed.mp4`,
+   `account_register_protected_pages_logout_login.mp4`, success still). Cloud: “E2E pass”
+   without artifacts is invalid.
+6. **H5** — List pre-existing issues separately (reproduced on previous Magento / raw GraphQL /
+   production); do not fix out-of-scope FE bugs on the Magento upgrade branch unless agreed.
+
+If **no** storefront URL can be started or supplied: run the GraphQL `placeOrder` fallback in the
+test plan, mark browser H1–H4 `blocked-needs-human`, and say so explicitly. Do **not** declare
+upgrade complete on compile + `curl` alone when a storefront URL exists.
 
 #### Cursor Cloud agents — execute the test plan in the VM
 
@@ -259,16 +286,19 @@ services available), **stopping after step 8–10 is incorrect**. After compile 
    **start required services** (MySQL, OpenSearch/Elasticsearch, PHP-FPM / built-in server). They
    are often not auto-started on a fresh VM.
 2. Open [upgrade-testplan.md](upgrade-testplan.md) and run every check marked **cloud-runnable**
-   there (Phase B sweeps, GraphQL/HTTP smoke, static scans, log crawls, asset 404 checks). Prefer
-   the project’s documented smoke tests (e.g. headless GraphQL `storeConfig` + `products` search).
+   there (Phase B sweeps, GraphQL/HTTP smoke, static scans, log crawls, asset 404 checks, **and
+   Phase H** when a storefront URL exists — or the GraphQL placeOrder fallback when it does not).
+   Prefer the project’s documented smoke tests (e.g. headless GraphQL `storeConfig` + `products`
+   search) before browser E2E.
 3. Record results in the PR / agent summary as `pass` / `fail` / `env-artifact` / `blocked-needs-human`
-   per the test plan’s triage rules. Fix `fail` items that are in scope for the upgrade branch
-   before declaring the upgrade complete.
+   per the test plan’s triage rules. Embed Phase H artifact URLs. Fix `fail` items that are in
+   scope for the upgrade branch before declaring the upgrade complete.
 4. Explicitly list what could **not** be run in cloud (production visual diffs, tablet viewports,
-   paid gateways, FTP, reCAPTCHA domain whitelist, full checkout with real payment) as
-   `blocked-needs-human` — do not silently skip them or mark them pass.
+   **paid** gateways, confirmation-email images, FTP, reCAPTCHA domain whitelist) as
+   `blocked-needs-human` — do not silently skip them or mark them pass. Offline-payment checkout
+   is **not** in that blocked list.
 5. Do **not** claim “upgrade done” or hand off to human testers until the cloud-runnable portion
-   has been executed and reported.
+   (including Phase H or GraphQL fallback) has been executed and reported.
 
 Local / laptop agents should still walk the same plan; cloud simply has no excuse to skip the
 parts the VM can exercise.
