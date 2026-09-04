@@ -22,6 +22,9 @@ kept so each point stays auditable — drop a point only when you can argue the 
    That includes [Phase H](#phase-h--browser-end-to-end-mandatory) (browser E2E with offline
    payment + PR artifacts) when a storefront URL exists. Do not stop at composer/compile and
    leave this plan for humans.
+5. **Packagist first (composer phase):** before local-patching or pinning Happy Horizon /
+   Experius modules during the upgrade, check [packagist.org](https://packagist.org) for a newer
+   compatible release — see the magento-upgrade skill §2a. Do not invent constraints.
 
 ## Cursor Cloud agent execution
 

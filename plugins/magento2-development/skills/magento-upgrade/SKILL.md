@@ -1,6 +1,6 @@
 ---
 name: magento-upgrade
-description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump (including Magento 2.4.9 → PHP 8.5); when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services, run the cloud-runnable portion of upgrade-testplan.md, and execute Phase H browser end-to-end testing (guest checkout with offline payment to a real order, account lifecycle) with video/screenshot artifacts in the PR — do not stop at composer/compile or curl smoke. For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
+description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump (including Magento 2.4.9 → PHP 8.5); when checking Packagist for newer Happy Horizon / Experius module releases before pinning or patching; when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services, run the cloud-runnable portion of upgrade-testplan.md, and execute Phase H browser end-to-end testing (guest checkout with offline payment to a real order, account lifecycle) with video/screenshot artifacts in the PR — do not stop at composer/compile or curl smoke. For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
 ---
 
 # Magento Upgrade Skill
@@ -58,6 +58,31 @@ Run `composer why-not magento/product-community-edition <new-version>`. Known ri
 Use `php8.5 /usr/local/bin/composer show -a <pkg>` (or `php8.4` on older targets) and
 `composer prohibits <pkg> <ver>` to investigate. **Do not invent version pins** — only bump to
 versions `show -a` / Marketplace / vendor portal actually list for the target Magento + PHP.
+
+#### 2a. MUST — Packagist first for Happy Horizon and Experius packages
+
+Before pinning, local-patching, forking, or opening an upstream PR for any **Happy Horizon** or
+**Experius** Composer package involved in the upgrade, **always** check Packagist for a newer
+compatible release:
+
+| Vendor | Package name patterns | Where to look |
+|---|---|---|
+| Experius | `experius/*` | https://packagist.org/packages/experius/… (also `composer show -a experius/…`) |
+| Happy Horizon | `happy-horizon/*`, `happyhorizon/*`, and other org HH packages in `composer.json` / lock | https://packagist.org/packages/… (same via `composer show -a`) |
+
+Order of operations (**MUST**):
+
+1. Identify every `experius/*`, `happy-horizon/*`, and `happyhorizon/*` package touched by
+   `why-not`, compile failures, or the Magento bump.
+2. Look each package up on [packagist.org](https://packagist.org) (and the org Composer mirror /
+   Packagist.com listing if that is how the team publishes — still verify the same package name).
+3. Prefer adopting a **newer published** version that already supports the target Magento / PHP
+   (and Symfony) over a local `patches/` file, a fork, or an invented constraint.
+4. Only after confirming **no** suitable newer release exists: patch locally, PR upstream, or pin
+   with an evidence-based constraint from `show -a` / Packagist.
+
+Holbox HD-473’s Experius `execute(): int` / PHP 8.5 fixes landed as published module releases
+(consumed via composer) — that is the preferred path.
 
 ### 3. Run composer update
 
@@ -200,8 +225,9 @@ find vendor app/code -path '*/Console/*Command*.php' -print0 \
   | while read -r f; do rg -q 'function\s+execute\s*\([^)]*\)\s*:\s*int' "$f" || echo "$f"; done
 ```
 
-For each hit, prefer **bumping the package** to a release that already has `: int`. Holbox HD-473
-fixed several Experius modules **upstream** (then consumed via composer), not only as local patches:
+For each hit, **MUST** check Packagist / `composer show -a` for a newer Happy Horizon or Experius
+(or other vendor) release that already has `: int` (see §2a) before writing a local patch. Holbox
+HD-473 fixed several Experius modules **upstream** (then consumed via composer):
 
 | Package | Upstream HD-473 work |
 |---|---|
@@ -211,9 +237,10 @@ fixed several Experius modules **upstream** (then consumed via composer), not on
 
 Horizon-Backend 2.4.9 also needed `elgentos/regenerate-catalog-urls` `~0.3.7` → `~0.4.9` plus local
 patches for experius contentblock / contentpage / missingtranslations / taxrulesreset /
-euvatvalidation / dblogger / ordergridextends when no release existed yet.
+euvatvalidation / dblogger / ordergridextends when **no** published release existed yet.
 
-If no release exists, add a local patch under `patches/` and register it in `composer.patches.json`, then:
+**Only if** Packagist has no suitable release, add a local patch under `patches/` and register it in
+`composer.patches.json`, then:
 
 ```bash
 COMPOSER_MEMORY_LIMIT=-1 php8.5 /usr/local/bin/composer patches-relock --no-interaction
@@ -376,6 +403,9 @@ parts the VM can exercise.
 
 ## Hard rules (agents)
 
+- **MUST** check [packagist.org](https://packagist.org) (and `composer show -a`) for newer
+  `experius/*`, `happy-horizon/*`, and `happyhorizon/*` releases **before** local patches, forks,
+  or invented pins — prefer the published version when compatible with the target Magento / PHP.
 - Do **not** lock or rewrite root `composer.json` `"version"` used by `replace: self.version`.
 - Do **not** bump Magento module `setup_version` / invent `db_schema` revisions to “force” upgrade.
 - Do **not** stop at `setup:di:compile` or `bin/magento --version` and call the upgrade complete.
