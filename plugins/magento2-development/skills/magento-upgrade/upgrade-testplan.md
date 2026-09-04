@@ -21,7 +21,11 @@ kept so each point stays auditable — drop a point only when you can argue the 
    `setup:di:compile` is green — see [Cursor Cloud agent execution](#cursor-cloud-agent-execution).
    That includes [Phase H](#phase-h--browser-end-to-end-mandatory) (browser E2E with offline
    payment + PR artifacts) when a storefront URL exists. Do not stop at composer/compile and
-   leave this plan for humans.
+   leave this plan for humans. After Phase H / GraphQL fallback succeeds, produce the Dutch
+   testrapport via [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md).
+5. **Packagist first (composer phase):** before local-patching or pinning Happy Horizon /
+   Experius modules during the upgrade, check [packagist.org](https://packagist.org) for a newer
+   compatible release — see the magento-upgrade skill §2a. Do not invent constraints.
 
 ## Cursor Cloud agent execution
 
@@ -54,7 +58,8 @@ Follow the project’s cloud docs (`AGENTS.md` / similar). Typical Magento cloud
 | Storefront smoke | `curl` (or browser MCP if available) home, category, PDP, search, customer login page — expect HTTP 200 and no fatal in logs |
 | **H0–H5** | [Phase H](#phase-h--browser-end-to-end-mandatory): SKU hygiene, guest checkout to a **real order** with **offline payment**, account lifecycle, hydration ATC smoke, **PR artifacts**, pre-existing ledger. Required when a storefront URL can be started or supplied |
 | GraphQL E2E fallback | If **no** storefront URL: run GraphQL `createEmptyCart` → `addProductsToCart` → set shipping → set payment (`checkmo` / offline) → `placeOrder`; report browser H1/H2 as `blocked-needs-human`. Do **not** mark browser E2E `pass` without a recording |
-| Admin smoke | If admin is reachable: login page loads; opening a known order/product URL does not 500 |
+| Admin smoke | If admin is reachable: login page loads; opening a known order/product URL does not 500; **print order/invoice PDF** on the target PHP (HD-473 Aheadworks/`imagedestroy`); open/edit a product (no EAV/attribute crash) |
+| File custom options | When catalog has multi-file options: GraphQL/storefront add-to-cart with one of two files uploaded; large PDF above old PHP limit; wrong extension rejected cleanly (HD-473) |
 | Unit / suite | Run project PHPUnit / testsuite when the autoloader gotcha is handled (see project `AGENTS.md`) |
 
 Example headless smoke (adapt host/store from the project):
@@ -76,12 +81,12 @@ rg -n "Deprecated Functionality|Fatal error|exception" var/log var/report 2>/dev
 
 | Plan ref | Why cloud cannot finish it |
 |---|---|
-| A1–A8 | Needs a recent production DB/media sync, domain whitelist, paid subscriptions, client credentials |
+| A1–A9 | Needs a recent production DB/media sync, domain whitelist, paid subscriptions, client credentials, realistic upload limits |
 | B2 | Only when no browser / computer-use is available in the agent |
 | B4–B5 | Needs production screenshots / JS-disabled visual comparison |
 | C–D visual / device matrix | Mobile/tablet/desktop parity and Hyvä styling need staging + human or Playwright against a seeded storefront |
 | D / H paid gateways | Real redirect/paid methods (iDEAL, Afterpay, cards, PayPal, etc.) and order-confirmation **email** image QA — **not** offline `checkmo` / Check Money order, which **is** cloud-runnable in Phase H |
-| H1–H4 browser | Only when no storefront URL can be started or supplied (then use GraphQL E2E fallback) |
+| H1–H4 browser | Only when no storefront URL can be started or supplied (then use GraphQL E2E fallback). Vercel SSO on `*.happyhorizon.dev` without agent credentials → document `blocked-needs-human` and still run GraphQL placeOrder against Magento |
 | E deep admin | Grid/UX checks beyond “does not 500” |
 | F integrations | FTP, feeds, GA4 measurement plan against live GTM |
 | G go-live config | Collect during staging test; agent may *list* Phase G candidates found in code/config diffs |
@@ -92,11 +97,20 @@ Before ending the cloud session, post a short report (PR comment or agent summar
 
 1. Services started, Magento base URL, and storefront URL used (or “none — GraphQL fallback”).
 2. Table of cloud-runnable checks with `pass` / `fail` / `env-artifact` (include H0–H5 or GraphQL fallback).
-3. Phase H artifact links (video + order screenshot). Cloud agents: “E2E pass” **without** artifacts is invalid.
+3. Phase H artifact links (video + order screenshot) as **clickable**
+   `https://cursor.com/agents/<bc-id>/artifacts?path=…` URLs (or platform `art-` embeds). Cloud
+   agents: “E2E pass” **without** artifacts is invalid. Bare filenames or bare `/opt/cursor/...`
+   paths alone are invalid.
 4. Pre-existing ledger (H5): issues reproduced on previous Magento / raw GraphQL / production.
 5. Fixes committed for any in-scope `fail`, or explicit tickets/todos for the rest.
 6. Bullet list of `blocked-needs-human` items left for staging / client UAT.
 7. Statement that compile **and** cloud-runnable test-plan execution (including Phase H or GraphQL fallback) completed (or what blocked boot).
+8. **Dutch testrapport** per [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md)
+   after Phase H / GraphQL fallback succeeds: write `Testrapport-<TICKET>.md` under
+   `/opt/cursor/artifacts/`, paste the same body into the PR summary + Jira comment, with every
+   screenshot and video as a clickable cursor.com agent artifact URL. Pattern: Holbox HD-473 /
+   `bc-6751dd3b-b831-48a9-a271-b6beeeffad3d`. Claiming upgrade E2E success without this report +
+   working media links is **invalid**. Do **not** include a verwijderde-modules / uninstall section.
 
 ## Phase A — Environment readiness gate
 
@@ -110,8 +124,9 @@ Do not start functional testing until every line passes. Each one burned a test 
 | A4 | Media synced, or the fallback is understood and noted | Order confirmation logo/product images missing was a staging media gap, not a template bug | NRC-451 |
 | A5 | Test-environment domain whitelisted for reCAPTCHA (and any other domain-bound key) | Account creation blocked by `Something went wrong with reCAPTCHA` on the upgrade domain | NRC-446 |
 | A6 | Credentials handed to the client for every channel they test themselves (admin, FTP, mailcatcher) | FTP-driven product image and configurable-linking flows could not be tested at all | NRC-438 |
-| A7 | Paid module subscriptions active for the target version | Mirasvit Advanced Reports subscription had expired; latest version installed but unsupported | NRC-351 |
+| A7 | Paid module subscriptions active for the target version | Mirasvit / Amasty (and similar) subscriptions expire and block supported bumps — renew or pin a compatible release (NRC-351, HD-565) | NRC-351, HD-565 |
 | A8 | **Baseline the pre-existing defects on production first** | Two "upgrade regressions" also occurred on live; without a baseline this is only discovered after investigation | NRC-338, NRC-372 |
+| A9 | PHP / nginx upload limits match real file-option / contact-attachment sizes | Holbox defaulted to 2M/8M; large PDFs failed with CRITICAL content-type until ~128M/132M and GraphQL returned a real error | HD-473 |
 
 ## Phase B — Automated sweeps before any human testing
 
@@ -187,6 +202,11 @@ executable path** (guest order + account + artifacts) is [Phase H](#phase-h--bro
 - UI strings match production, including ones only fixable via inline translation or the theme's
   `i18n/nl_NL.csv` (NRC-400, NRC-457)
 - Order confirmation email: logo, product images, layout (NRC-451)
+- **Multi-file product custom options** (Magento 2.4.9): product with ≥2 file options; upload one
+  required file → add to cart must succeed (core `Http::isUploaded()` regression); wrong extension
+  rejected; file visible on the order in admin (HD-473)
+- **Large file upload** (> previous `upload_max_filesize`): cart/order or contact attachment must
+  not fail with a silent CRITICAL content-type (HD-473)
 
 ## Phase H — Browser end-to-end (mandatory)
 
@@ -215,7 +235,9 @@ Check Money order) so a real order can be placed without paid gateways.
    browser: `products` search finds it, and `addProductsToCart` succeeds. Skip parent configurables
    and VirtualProducts that reject shipping (PR #330: broken demo SKUs caused false checkout fails).
 4. Confirm an offline / non-redirect payment method is enabled (`checkmo` or equivalent).
-5. If reCAPTCHA blocks registration on the test domain, record A5 and continue H1; mark H2
+5. If the catalog sells **file custom options**, pick a SKU with ≥2 file options (Holbox: P00003)
+   for a dedicated cart case in addition to the simple H1 SKU.
+6. If reCAPTCHA blocks registration on the test domain, record A5 and continue H1; mark H2
    `blocked-needs-human` only if account flows cannot proceed.
 
 ### H1 — Guest checkout → order placed
@@ -253,11 +275,15 @@ Cloud agents and any agent that claims H1/H2 `pass` must attach proof:
 | Account lifecycle recording | `account_register_protected_pages_logout_login.mp4` |
 | Order confirmation still | screenshot of success page showing the order number |
 
-- Save under the agent artifact dir when available (`/opt/cursor/artifacts/…`).
-- Embed in the PR body / agent summary like PR #330: linked video thumbs and
-  `![Order confirmation …](https://cursor.com/artifacts/…)` (or the platform’s equivalent artifact
-  URLs).
+- Save under the agent artifact dir when available (`/opt/cursor/artifacts/…`). Prefer also
+  `jira-attachments/` copies with stable names (see magento-upgrade-testrapport).
+- Embed in the PR body / agent summary with **clickable public URLs** — preferred:
+  `https://cursor.com/agents/<bc-id>/artifacts?path=<url-encoded /opt/cursor/artifacts/…>`;
+  also acceptable: platform `https://cursor.com/artifacts/c/art-…` embeds (PR #330 style).
+  Never bare filenames or bare `/opt/cursor/...` paths alone.
 - Exit report must list artifact URLs. **“E2E pass” without artifacts is invalid** for cloud agents.
+- After Phase H / GraphQL fallback succeeds, complete the Dutch testrapport via
+  [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md) (HD-473 pattern).
 
 ### H5 — Pre-existing ledger
 
@@ -290,6 +316,9 @@ does **not** satisfy H1 `pass` for projects that have a storefront URL available
 - Customer grid does not overflow with long names; may need an admin theme override adding
   `overflow-x: auto` to `.admin__data-grid-wrap` (NRC-467)
 - Any admin block extending a core block still loads — deprecated dynamic properties fatal here first (NRC-374)
+- **Print order / invoice PDF** on the target PHP (8.5 on 2.4.9) — Aheadworks/`imagedestroy()` and
+  similar GD calls 503 until patched (HD-473)
+- Open/edit a product in admin — no EAV/attribute fatal on product edit (HD-473)
 
 ## Phase F — Integrations, exports and analytics
 
@@ -336,6 +365,8 @@ Applying these at intake, rather than after investigation, is where most of the 
 
 - Phases A–H walked, every point recorded, no open `fail`.
 - Phase H1 passed with a real order number and artifacts (or GraphQL fallback documented when no FE).
+- Dutch testrapport produced via [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md)
+  with clickable screenshot/video links (HD-473 / `bc-6751dd3b` pattern).
 - Automated sweeps (B1–B7) clean on the release candidate, re-run after the last fix.
 - Phase G list complete, with each entry either scripted as a data patch or scheduled in the go-live runbook.
 - Pre-existing production defects (including H5) explicitly listed as out of scope and agreed with the client.

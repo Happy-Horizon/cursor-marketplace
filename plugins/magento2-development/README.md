@@ -24,7 +24,12 @@ Cursor plugin providing rules and best practices for Magento 2 / Adobe Commerce 
   Phase H browser end-to-end (guest checkout via offline payment to a real order, account
   lifecycle, PR video/screenshot artifacts — Horizon-Storefront#330 pattern). In Cursor Cloud the
   agent must boot services and run the cloud-runnable portion of that plan, including Phase H
-  when a storefront exists (not stop at compile or curl smoke).
+  when a storefront exists (not stop at compile or curl smoke), then produce the Dutch testrapport
+  via **magento-upgrade-testrapport**.
+- **magento-upgrade-testrapport** - Post-upgrade Dutch Jira-ready testrapport after Phase H /
+  staging E2E succeeds (HD-473 / `bc-6751dd3b` pattern): required screenshots and videos under
+  `/opt/cursor/artifacts/`, clickable `https://cursor.com/agents/<bc-id>/artifacts?path=…` links,
+  `Testrapport-<TICKET>.md`, PR + Jira paste. No module-uninstall inventory.
 - **magento-patches** - Working with `cweagans/composer-patches`: splitting an Adobe isolated security
   patch (APSB / `repo.magento.com` patch zip) into per-package files, handling the `nginx.conf.sample`
   and Commerce Version Tool hunks that cannot go through composer, generating a local patch against
@@ -42,8 +47,9 @@ Cursor plugin providing rules and best practices for Magento 2 / Adobe Commerce 
 Rules apply automatically when working with Magento 2 project files (PHP in `app/code/`, XML config,
 PHTML templates). The upgrade skill activates when you ask to upgrade Magento, hit composer or
 `setup:di:compile` failures after a version bump, align `deploy.settings.yml` / `.github/workflows`
-after a PHP bump, plan post-upgrade testing and go-live, or run browser end-to-end checkout /
-account flows with artifacts after an upgrade. The patches skill activates when
+after a PHP bump, plan post-upgrade testing and go-live, run browser end-to-end checkout /
+account flows with artifacts after an upgrade, or write the Dutch post-upgrade testrapport
+(magento-upgrade-testrapport). The patches skill activates when
 applying a security patch, porting a patch that no longer applies, or debugging patches that appear
 to do nothing. The migrate skill activates when moving a project onto GitHub Actions + Hypernode
 Deploy, or when a build/deploy fails with the `env.php` / “No database connection” class of errors.
