@@ -54,7 +54,8 @@ Follow the project’s cloud docs (`AGENTS.md` / similar). Typical Magento cloud
 | Storefront smoke | `curl` (or browser MCP if available) home, category, PDP, search, customer login page — expect HTTP 200 and no fatal in logs |
 | **H0–H5** | [Phase H](#phase-h--browser-end-to-end-mandatory): SKU hygiene, guest checkout to a **real order** with **offline payment**, account lifecycle, hydration ATC smoke, **PR artifacts**, pre-existing ledger. Required when a storefront URL can be started or supplied |
 | GraphQL E2E fallback | If **no** storefront URL: run GraphQL `createEmptyCart` → `addProductsToCart` → set shipping → set payment (`checkmo` / offline) → `placeOrder`; report browser H1/H2 as `blocked-needs-human`. Do **not** mark browser E2E `pass` without a recording |
-| Admin smoke | If admin is reachable: login page loads; opening a known order/product URL does not 500 |
+| Admin smoke | If admin is reachable: login page loads; opening a known order/product URL does not 500; **print order/invoice PDF** on the target PHP (HD-473 Aheadworks/`imagedestroy`); edit a product after module uninstalls (no orphaned Lookbook/Hide-Price EAV crash) |
+| File custom options | When catalog has multi-file options: GraphQL/storefront add-to-cart with one of two files uploaded; large PDF above old PHP limit; wrong extension rejected cleanly (HD-473) |
 | Unit / suite | Run project PHPUnit / testsuite when the autoloader gotcha is handled (see project `AGENTS.md`) |
 
 Example headless smoke (adapt host/store from the project):
@@ -81,7 +82,7 @@ rg -n "Deprecated Functionality|Fatal error|exception" var/log var/report 2>/dev
 | B4–B5 | Needs production screenshots / JS-disabled visual comparison |
 | C–D visual / device matrix | Mobile/tablet/desktop parity and Hyvä styling need staging + human or Playwright against a seeded storefront |
 | D / H paid gateways | Real redirect/paid methods (iDEAL, Afterpay, cards, PayPal, etc.) and order-confirmation **email** image QA — **not** offline `checkmo` / Check Money order, which **is** cloud-runnable in Phase H |
-| H1–H4 browser | Only when no storefront URL can be started or supplied (then use GraphQL E2E fallback) |
+| H1–H4 browser | Only when no storefront URL can be started or supplied (then use GraphQL E2E fallback). Vercel SSO on `*.happyhorizon.dev` without agent credentials → document `blocked-needs-human` and still run GraphQL placeOrder against Magento |
 | E deep admin | Grid/UX checks beyond “does not 500” |
 | F integrations | FTP, feeds, GA4 measurement plan against live GTM |
 | G go-live config | Collect during staging test; agent may *list* Phase G candidates found in code/config diffs |
@@ -110,8 +111,9 @@ Do not start functional testing until every line passes. Each one burned a test 
 | A4 | Media synced, or the fallback is understood and noted | Order confirmation logo/product images missing was a staging media gap, not a template bug | NRC-451 |
 | A5 | Test-environment domain whitelisted for reCAPTCHA (and any other domain-bound key) | Account creation blocked by `Something went wrong with reCAPTCHA` on the upgrade domain | NRC-446 |
 | A6 | Credentials handed to the client for every channel they test themselves (admin, FTP, mailcatcher) | FTP-driven product image and configurable-linking flows could not be tested at all | NRC-438 |
-| A7 | Paid module subscriptions active for the target version | Mirasvit Advanced Reports subscription had expired; latest version installed but unsupported | NRC-351 |
+| A7 | Paid module subscriptions active for the target version | Mirasvit Advanced Reports / Feed / SEO subscriptions expire and block supported bumps; Amasty packs likewise (renew **or** uninstall with stakeholder OK — Holbox HD-473/HD-565/HD-568) | NRC-351, HD-565 |
 | A8 | **Baseline the pre-existing defects on production first** | Two "upgrade regressions" also occurred on live; without a baseline this is only discovered after investigation | NRC-338, NRC-372 |
+| A9 | PHP / nginx upload limits match real file-option / contact-attachment sizes | Holbox defaulted to 2M/8M; large PDFs failed with CRITICAL content-type until ~128M/132M and GraphQL returned a real error | HD-473 |
 
 ## Phase B — Automated sweeps before any human testing
 
@@ -181,12 +183,19 @@ executable path** (guest order + account + artifacts) is [Phase H](#phase-h--bro
 - Address field alignment and label position when empty (NRC-397, NRC-434)
 - Delivery-date selection: selectable, and its validation message clears once set. Broke twice —
   once as a `Phrase` passed to `EvaluationResultFactory::createErrorMessage(): ?string`, once as an
-  unusable date picker (NRC-373, NRC-399, NRC-437)
+  unusable date picker (NRC-373, NRC-399, NRC-437). After removing Swissup Delivery Date, confirm
+  the **remaining** delivery-date module (e.g. Experius) still works and project wrappers for the
+  removed package are disabled (HD-473 `Holbox_DeliveryDateExtend`).
 - Payment method templates render — a Mollie Hyvä Checkout template called `isComponentsEnabled()` on null (NRC-373)
 - Selection borders and notification styling per production (NRC-443)
 - UI strings match production, including ones only fixable via inline translation or the theme's
   `i18n/nl_NL.csv` (NRC-400, NRC-457)
 - Order confirmation email: logo, product images, layout (NRC-451)
+- **Multi-file product custom options** (Magento 2.4.9): product with ≥2 file options; upload one
+  required file → add to cart must succeed (core `Http::isUploaded()` regression); wrong extension
+  rejected; file visible on the order in admin (HD-473)
+- **Large file upload** (> previous `upload_max_filesize`): cart/order or contact attachment must
+  not fail with a silent CRITICAL content-type (HD-473)
 
 ## Phase H — Browser end-to-end (mandatory)
 
@@ -215,7 +224,10 @@ Check Money order) so a real order can be placed without paid gateways.
    browser: `products` search finds it, and `addProductsToCart` succeeds. Skip parent configurables
    and VirtualProducts that reject shipping (PR #330: broken demo SKUs caused false checkout fails).
 4. Confirm an offline / non-redirect payment method is enabled (`checkmo` or equivalent).
-5. If reCAPTCHA blocks registration on the test domain, record A5 and continue H1; mark H2
+5. Confirm an offline / non-redirect payment method is enabled (`checkmo` or equivalent).
+6. If the catalog sells **file custom options**, pick a SKU with ≥2 file options (Holbox: P00003)
+   for a dedicated cart case in addition to the simple H1 SKU.
+7. If reCAPTCHA blocks registration on the test domain, record A5 and continue H1; mark H2
    `blocked-needs-human` only if account flows cannot proceed.
 
 ### H1 — Guest checkout → order placed
@@ -290,6 +302,10 @@ does **not** satisfy H1 `pass` for projects that have a storefront URL available
 - Customer grid does not overflow with long names; may need an admin theme override adding
   `overflow-x: auto` to `.admin__data-grid-wrap` (NRC-467)
 - Any admin block extending a core block still loads — deprecated dynamic properties fatal here first (NRC-374)
+- **Print order / invoice PDF** on the target PHP (8.5 on 2.4.9) — Aheadworks/`imagedestroy()` and
+  similar GD calls 503 until patched (HD-473)
+- After uninstalling Lookbook / Hide Price / Page Builder: open a product in admin — orphaned EAV
+  must be data-patched away (HD-473)
 
 ## Phase F — Integrations, exports and analytics
 
