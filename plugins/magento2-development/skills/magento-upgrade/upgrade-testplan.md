@@ -21,7 +21,8 @@ kept so each point stays auditable — drop a point only when you can argue the 
    `setup:di:compile` is green — see [Cursor Cloud agent execution](#cursor-cloud-agent-execution).
    That includes [Phase H](#phase-h--browser-end-to-end-mandatory) (browser E2E with offline
    payment + PR artifacts) when a storefront URL exists. Do not stop at composer/compile and
-   leave this plan for humans.
+   leave this plan for humans. After Phase H / GraphQL fallback succeeds, produce the Dutch
+   testrapport via [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md).
 5. **Packagist first (composer phase):** before local-patching or pinning Happy Horizon /
    Experius modules during the upgrade, check [packagist.org](https://packagist.org) for a newer
    compatible release — see the magento-upgrade skill §2a. Do not invent constraints.
@@ -96,11 +97,20 @@ Before ending the cloud session, post a short report (PR comment or agent summar
 
 1. Services started, Magento base URL, and storefront URL used (or “none — GraphQL fallback”).
 2. Table of cloud-runnable checks with `pass` / `fail` / `env-artifact` (include H0–H5 or GraphQL fallback).
-3. Phase H artifact links (video + order screenshot). Cloud agents: “E2E pass” **without** artifacts is invalid.
+3. Phase H artifact links (video + order screenshot) as **clickable**
+   `https://cursor.com/agents/<bc-id>/artifacts?path=…` URLs (or platform `art-` embeds). Cloud
+   agents: “E2E pass” **without** artifacts is invalid. Bare filenames or bare `/opt/cursor/...`
+   paths alone are invalid.
 4. Pre-existing ledger (H5): issues reproduced on previous Magento / raw GraphQL / production.
 5. Fixes committed for any in-scope `fail`, or explicit tickets/todos for the rest.
 6. Bullet list of `blocked-needs-human` items left for staging / client UAT.
 7. Statement that compile **and** cloud-runnable test-plan execution (including Phase H or GraphQL fallback) completed (or what blocked boot).
+8. **Dutch testrapport** per [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md)
+   after Phase H / GraphQL fallback succeeds: write `Testrapport-<TICKET>.md` under
+   `/opt/cursor/artifacts/`, paste the same body into the PR summary + Jira comment, with every
+   screenshot and video as a clickable cursor.com agent artifact URL. Pattern: Holbox HD-473 /
+   `bc-6751dd3b-b831-48a9-a271-b6beeeffad3d`. Claiming upgrade E2E success without this report +
+   working media links is **invalid**. Do **not** include a verwijderde-modules / uninstall section.
 
 ## Phase A — Environment readiness gate
 
@@ -351,6 +361,8 @@ Applying these at intake, rather than after investigation, is where most of the 
 
 - Phases A–H walked, every point recorded, no open `fail`.
 - Phase H1 passed with a real order number and artifacts (or GraphQL fallback documented when no FE).
+- Dutch testrapport produced via [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md)
+  with clickable screenshot/video links (HD-473 / `bc-6751dd3b` pattern).
 - Automated sweeps (B1–B7) clean on the release candidate, re-run after the last fix.
 - Phase G list complete, with each entry either scripted as a data patch or scheduled in the go-live runbook.
 - Pre-existing production defects (including H5) explicitly listed as out of scope and agreed with the client.

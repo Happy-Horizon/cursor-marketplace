@@ -1,6 +1,6 @@
 ---
 name: magento-upgrade
-description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump (including Magento 2.4.9 → PHP 8.5); when checking Packagist for newer Happy Horizon / Experius module releases before pinning or patching; when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services, run the cloud-runnable portion of upgrade-testplan.md, and execute Phase H browser end-to-end testing (guest checkout with offline payment to a real order, account lifecycle) with video/screenshot artifacts in the PR — do not stop at composer/compile or curl smoke. For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
+description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump (including Magento 2.4.9 → PHP 8.5); when checking Packagist for newer Happy Horizon / Experius module releases before pinning or patching; when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services, run the cloud-runnable portion of upgrade-testplan.md, execute Phase H browser end-to-end testing (guest checkout with offline payment to a real order, account lifecycle) with video/screenshot artifacts, then produce the Dutch Jira-ready testrapport via magento-upgrade-testrapport (clickable cursor.com artifact links) — do not stop at composer/compile or curl smoke. For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
 ---
 
 # Magento Upgrade Skill
@@ -9,7 +9,8 @@ Upgrade procedure for Happy Horizon Magento 2 projects. Written against the Hori
 (headless GraphQL, Hypernode Deploy) and extended with lessons from Holbox HD-473 (headless GraphQL +
 Vercel storefront + Fastly, Bitbucket `experius/holbox`, Magento 2.4.9 / PHP 8.5). Steps 1–10 are the
 composer, compile and CI/deploy mechanics; step 11 is the regression phase (including Phase H browser
-E2E with PR artifacts), which is where most upgrade time actually goes.
+E2E with PR artifacts and the Dutch **testrapport** deliverable), which is where most upgrade time
+actually goes.
 
 Details to confirm per project before following the steps literally: the `magento/product-community-edition`
 constraint style, the package pins in step 2, the deploy/CI surface in step 4 (`deploy.settings.yml`,
@@ -275,7 +276,7 @@ and GraphQL returned a real error.
 
 ### 7. Verify patches apply
 
-Patches are applied via `cweagans/composer-patches ^2.0`. The repo sets `"composer-exit-on-patch-failure": true` — a single failing patch aborts the entire install. If a patch fails, find an updated variant at [patches.experius.nl](https://patches.experius.nl/patches/experius/) (e.g. replace `_2.4.8_` with `_2.4.9_` in the filename), or add a local patch under `patches/`. If no fix exists, report BLOCKED.
+Patches are applied via `cweagans/composer-patches ^2.0`. The repo sets `"composer-exit-on-patch-failure": true` — a single failing patch aborts the entire install. For Happy Horizon / Experius packages, run §2a (Packagist) **before** adding a new local patch. If a patch fails, find an updated variant at [patches.experius.nl](https://patches.experius.nl/patches/experius/) (e.g. replace `_2.4.8_` with `_2.4.9_` in the filename), or add a local patch under `patches/`. If no fix exists, report BLOCKED.
 
 Note that editing `composer.patches.json` alone applies nothing — `patches.lock.json` still pins the
 old set and composer caches downloaded patches, so a relock, cache clear and package reinstall are all
@@ -365,6 +366,18 @@ If **no** storefront URL can be started or supplied: run the GraphQL `placeOrder
 test plan, mark browser H1–H4 `blocked-needs-human`, and say so explicitly. Do **not** declare
 upgrade complete on compile + `curl` alone when a storefront URL exists.
 
+#### Deliverables — Dutch testrapport (mandatory after Phase H)
+
+After Phase H (or the GraphQL placeOrder fallback) succeeds on the target env (usually staging),
+**MUST** produce the Dutch Jira-ready testrapport by following
+[magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md). Reference pattern: Holbox
+HD-473 / agent `bc-6751dd3b-b831-48a9-a271-b6beeeffad3d` (screenshots + videos under
+`/opt/cursor/artifacts/`, clickable `https://cursor.com/agents/<bc-id>/artifacts?path=…` links in
+PR + Jira). Write `Testrapport-<TICKET>.md` under `/opt/cursor/artifacts/` and paste the same body
+into the PR summary and Jira comment. Claiming upgrade E2E success without that testrapport and
+working media links is **invalid**. Do **not** add a verwijderde-modules / uninstall inventory
+(see Lewis feedback on magento-upgrade).
+
 #### Cursor Cloud agents — execute the test plan in the VM
 
 When this skill runs in a **Cursor Cloud** agent (or any isolated cloud VM with the Magento
@@ -397,6 +410,10 @@ services available), **stopping after step 8–10 is incorrect**. After compile 
    list when Magento/GraphQL is reachable.
 6. Do **not** claim “upgrade done” or hand off to human testers until the cloud-runnable portion
    (including Phase H or GraphQL fallback) has been executed and reported.
+7. After Phase H / GraphQL fallback succeeds: run
+   [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md) — Dutch report with
+   **clickable** screenshot/video links (`https://cursor.com/agents/<bc-id>/artifacts?path=…`),
+   `Testrapport-<TICKET>.md` under `/opt/cursor/artifacts/`, and the same body in the PR + Jira.
 
 Local / laptop agents should still walk the same plan; cloud simply has no excuse to skip the
 parts the VM can exercise.
@@ -413,10 +430,14 @@ parts the VM can exercise.
 - Do **not** invent Jira tickets, third-party version pins, or patch filenames.
 - Do **not** confuse Holbox Magento (`experius/holbox`, HD-*) with `holbox-m2-frontend` / NEXT-*
   Horizon Storefront work — different repos and skills.
+- **MUST** produce the Dutch post-upgrade testrapport via
+  [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md) after Phase H / GraphQL
+  fallback succeeds — with clickable cursor.com artifact URLs for every screenshot and video.
+  “E2E pass” / “upgrade done” without that report + working media links is **invalid**.
 
 ## Known Upgrade History
 
 | From | To | PR / Branch | Key constraint changes |
 |---|---|---|---|
 | 2.4.8-p3 | 2.4.9 | feature/magento-2-4-9-upgrade-daaa (Horizon-Backend) | emailcatcher 4.4.0→4.5.2; elasticsuite 2.11.16→2.11.19; elgentos/regenerate-catalog-urls ~0.3.7→~0.4.9; local Symfony 7 `execute(): int` patches for experius contentblock/contentpage/missingtranslations/taxrulesreset/euvatvalidation/dblogger/ordergridextends |
-| ~2.4.6-p14 | 2.4.9 / PHP 8.5 | Holbox [HD-473](https://ct-happyhorizon.atlassian.net/browse/HD-473); Bitbucket `experius/holbox` `feature/HD-473` (pipelines #786/#795/#796); regression agent `bc-6751dd3b-b831-48a9-a271-b6beeeffad3d`; staging `shopdirect.holbox.nl.happyhorizon.dev` + FE `www.holbox.nl.happyhorizon.dev` | Headless GraphQL + Vercel/Fastly (not Hyvä). ES7→8; upstream Experius `execute(): int` / PHP 8.5 PRs (pagenotfound, dblogger, missingtranslations); `Holbox_ProductCustomOptionImages` for 2.4.9 multi-file `Http::isUploaded()`; Aheadworks PDF `imagedestroy()` patch; upload limits ~128M/132M; `bitbucket-pipelines.yml` PHP bump |
+| ~2.4.6-p14 | 2.4.9 / PHP 8.5 | Holbox [HD-473](https://ct-happyhorizon.atlassian.net/browse/HD-473); Bitbucket `experius/holbox` `feature/HD-473` (pipelines #786/#795/#796); regression agent `bc-6751dd3b-b831-48a9-a271-b6beeeffad3d`; staging `shopdirect.holbox.nl.happyhorizon.dev` + FE `www.holbox.nl.happyhorizon.dev` | Headless GraphQL + Vercel/Fastly (not Hyvä). ES7→8; upstream Experius `execute(): int` / PHP 8.5 PRs (pagenotfound, dblogger, missingtranslations); `Holbox_ProductCustomOptionImages` for 2.4.9 multi-file `Http::isUploaded()`; Aheadworks PDF `imagedestroy()` patch; upload limits ~128M/132M; `bitbucket-pipelines.yml` PHP bump. **Deliverable pattern:** Dutch testrapport + clickable artifact links (see [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md)) — not Holbox-only module-removal notes |
