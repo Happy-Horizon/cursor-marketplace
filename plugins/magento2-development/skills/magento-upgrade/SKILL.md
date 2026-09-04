@@ -1,6 +1,6 @@
 ---
 name: magento-upgrade
-description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump (including Magento 2.4.9 → PHP 8.5); when removing or replacing Amasty/Swissup/Mirasvit/Magezon packages that block the bump; when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services, run the cloud-runnable portion of upgrade-testplan.md, and execute Phase H browser end-to-end testing (guest checkout with offline payment to a real order, account lifecycle) with video/screenshot artifacts in the PR — do not stop at composer/compile or curl smoke. For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
+description: Procedure for upgrading Magento Open Source to a new patch or minor version. Use when asked to upgrade Magento, bump the product-community-edition constraint, resolve composer conflicts after a Magento version bump, or fix setup:di:compile / magento:compile failures (e.g. Symfony Command::execute(): int). Also use when aligning deploy.settings.yml php_version / deploy_image, .github/workflows/ci.yml PHP inputs, or Hypernode Deploy settings after a Magento or PHP bump (including Magento 2.4.9 → PHP 8.5); when planning or running post-upgrade regression testing; or preparing an upgrade go-live — see upgrade-testplan.md. In Cursor Cloud, after compile succeeds the agent MUST bring up services, run the cloud-runnable portion of upgrade-testplan.md, and execute Phase H browser end-to-end testing (guest checkout with offline payment to a real order, account lifecycle) with video/screenshot artifacts in the PR — do not stop at composer/compile or curl smoke. For full Bitbucket→GitHub+Hypernode migrations use magento-github-hypernode-migrate.
 ---
 
 # Magento Upgrade Skill
@@ -51,30 +51,13 @@ Run `composer why-not magento/product-community-edition <new-version>`. Known ri
 | `magento/module-contact-graph-ql-pwa` | exact-version; bump if required |
 | `symfony/finder` (dev) | `^6.4` conflicts on Symfony major bump |
 | `symplify/monorepo-builder` (dev) | conflicts with Symfony 7+ |
-| Amasty (labels, hide-price, mostviewed, image-optimizer, blog, …) | licenses + Magento/PHP gates; often block 2.4.9 — renew **or** remove with stakeholder OK (Holbox HD-473/HD-568) |
-| Swissup Firecheckout + checkout stack | heavy Magento/PHP coupling; Holbox **removed** the stack for 2.4.9 rather than pin-fight |
-| Mirasvit (feed, SEO filter, report, cache warmer) | expired licenses block supported bumps (HD-565 / NRC-351); renew or remove |
-| Magezon Page Builder / MGS Lookbook | often incompatible or unused on headless; removal needs EAV data cleanup |
+| Amasty / Swissup / Mirasvit / Magezon (and similar) | may need **pinning**, licence renewal, or a vendor-compatible release for 2.4.9 / PHP 8.5 — resolve via `why-not` / vendor portal; do **not** invent pins |
 | Aheadworks / Magetrend PDF | PHP 8.5 `imagedestroy()` deprecations — bump or local composer-patch |
 | Elasticsearch client / engine | Magento 2.4.9 stacks move ES7 → ES8 / OpenSearch; align Hypernode search + modules |
 
 Use `php8.5 /usr/local/bin/composer show -a <pkg>` (or `php8.4` on older targets) and
 `composer prohibits <pkg> <ver>` to investigate. **Do not invent version pins** — only bump to
 versions `show -a` / Marketplace / vendor portal actually list for the target Magento + PHP.
-
-#### 2a. Prefer remove over zombie pins (when product allows)
-
-When `why-not` is blocked by paid modules with expired licences or abandoned checkout stacks, and
-the shop no longer needs them (common on headless GraphQL where Swissup Firecheckout / Amasty
-storefront widgets are unused):
-
-1. Get explicit stakeholder OK to uninstall (Holbox listed every removed package in the test report).
-2. Remove from `composer.json` / `composer.lock`, disable dependents in `app/etc/config.php`, and
-   ship a **data patch** that deletes orphaned EAV attributes (Lookbook / Hide Price crashed admin
-   product-edit until cleaned).
-3. Disable project modules that only wrap the removed vendor package (e.g. Holbox turned off
-   `Holbox_DeliveryDateExtend` when Swissup Delivery Date left; Experius delivery-date stayed on).
-4. Re-run `setup:upgrade` on staging and confirm admin product edit + checkout still work.
 
 ### 3. Run composer update
 
@@ -286,7 +269,7 @@ MAGE_MODE=production php8.5 -d memory_limit=2G bin/magento setup:di:compile
 
 CI enforces this via the `di-compile` job in `.github/workflows/ci.yml` (or Bitbucket pipelines).
 Keep that job on the **same** PHP as `deploy.settings.yml`. Compile green ≠ shop works — continue to
-step 11 (Holbox still found cart, PDF, admin EAV, and upload bugs after backend compile/deploy).
+step 11 (Holbox still found cart, PDF, admin product-edit, and upload bugs after backend compile/deploy).
 
 ### 9. Verification checklist
 
@@ -304,11 +287,11 @@ MAGE_MODE=production php8.5 -d memory_limit=2G bin/magento setup:di:compile
 
 Use separate commits:
 
-- **Commit A** — `composer.json`, `composer.lock`, `patches.lock.json` (if changed), `composer.patches.json` (if changed), `patches/` (new local patch files), module uninstall / `config.php` disables.
+- **Commit A** — `composer.json`, `composer.lock`, `patches.lock.json` (if changed), `composer.patches.json` (if changed), `patches/` (new local patch files).
 - **Commit B** — All base skeleton files from `magento/magento2-base` (`app/`, `bin/`, `dev/`, `lib/`, `pub/`, `setup/`, `.php-cs-fixer.dist.php`).
 - **Commit C** (if needed) — `deploy.settings.yml` (`php_version`, `deploy_image`, stack FE keys, nginx upload limits),
   `.github/workflows/ci.yml` (and related workflow PHP / image pins), `bitbucket-pipelines.yml`.
-- **Commit D** (if needed) — project fixes found in regression (file-option plugins, PDF patches, EAV data patches).
+- **Commit D** (if needed) — project fixes found in regression (file-option plugins, PDF patches).
 
 Commit message format follows the **target** repo (e.g. Holbox/Bitbucket `HD-473 - …` or
 `[FEATURE][HD-473] …`; marketplace uses `ILDT-*`). Ask the user for the ticket if not known —
@@ -373,15 +356,13 @@ services available), **stopping after step 8–10 is incorrect**. After compile 
    - GraphQL `placeOrder` with offline payment (Holbox: `STAGING…` order numbers in the report).
    - Product with **≥2 file custom options**: upload one file → cart must succeed; wrong extension
      must error cleanly; large PDF (> previous PHP limit) must not CRITICAL.
-   - Admin: open/edit a product after module uninstalls (no Lookbook/Hide-Price EAV crash); print
-     order/invoice PDF on the target PHP.
+   - Admin: open/edit a known product (no EAV/attribute crash); print order/invoice PDF on the
+     target PHP.
    - Contact form with attachment when the form exists.
-   - Delivery-date still selectable if Experius (or remaining) delivery-date modules stayed on
-     after Swissup removal.
+   - Delivery-date still selectable when the project uses a delivery-date module.
 4. Record results in the PR / agent summary as `pass` / `fail` / `env-artifact` / `blocked-needs-human`
    per the test plan’s triage rules. Embed Phase H artifact URLs. Fix `fail` items that are in
-   scope for the upgrade branch before declaring the upgrade complete. List **removed modules**
-   vs production in the report (Holbox pattern) so testers do not file false defects.
+   scope for the upgrade branch before declaring the upgrade complete.
 5. Explicitly list what could **not** be run in cloud (production visual diffs, tablet viewports,
    **paid** gateways, confirmation-email images, FTP, reCAPTCHA domain whitelist, **Vercel SSO**
    on `*.happyhorizon.dev` storefronts when the agent lacks auth) as `blocked-needs-human` — do
@@ -399,8 +380,7 @@ parts the VM can exercise.
 - Do **not** bump Magento module `setup_version` / invent `db_schema` revisions to “force” upgrade.
 - Do **not** stop at `setup:di:compile` or `bin/magento --version` and call the upgrade complete.
 - Do **not** pin `deploy_image: …/latest-php…` while hypernode-deploy 4.9+ is unsafe.
-- Do **not** invent Jira tickets, Amasty/Mirasvit version pins, or patch filenames.
-- Do **not** leave orphaned EAV from removed modules without a data patch / `setup:upgrade` proof.
+- Do **not** invent Jira tickets, third-party version pins, or patch filenames.
 - Do **not** confuse Holbox Magento (`experius/holbox`, HD-*) with `holbox-m2-frontend` / NEXT-*
   Horizon Storefront work — different repos and skills.
 
@@ -409,4 +389,4 @@ parts the VM can exercise.
 | From | To | PR / Branch | Key constraint changes |
 |---|---|---|---|
 | 2.4.8-p3 | 2.4.9 | feature/magento-2-4-9-upgrade-daaa (Horizon-Backend) | emailcatcher 4.4.0→4.5.2; elasticsuite 2.11.16→2.11.19; elgentos/regenerate-catalog-urls ~0.3.7→~0.4.9; local Symfony 7 `execute(): int` patches for experius contentblock/contentpage/missingtranslations/taxrulesreset/euvatvalidation/dblogger/ordergridextends |
-| ~2.4.6-p14 | 2.4.9 / PHP 8.5 | Holbox [HD-473](https://ct-happyhorizon.atlassian.net/browse/HD-473); Bitbucket `experius/holbox` `feature/HD-473` (pipelines #786/#795/#796); regression agent [bc-6751dd3b](https://cursor.com/agents/bc-6751dd3b-b831-48a9-a271-b6beeeffad3d); staging `shopdirect.holbox.nl.happyhorizon.dev` + FE `www.holbox.nl.happyhorizon.dev` | Headless GraphQL + Vercel/Fastly (not Hyvä). Removed Amasty blog/labels/optimizer/mostviewed/hide-price/…, Swissup Firecheckout stack, MGS Lookbook, Magezon PB, Mirasvit feed/report/SEO/warmer, Anowave, Zopim, Bookerz; ES7→8; upstream Experius `execute(): int` / PHP 8.5 PRs (pagenotfound, dblogger, missingtranslations); `Holbox_ProductCustomOptionImages` for 2.4.9 multi-file `Http::isUploaded()`; Aheadworks PDF `imagedestroy()` patch; upload limits ~128M/132M; `bitbucket-pipelines.yml` PHP bump; EAV cleanup after Lookbook/Hide Price |
+| ~2.4.6-p14 | 2.4.9 / PHP 8.5 | Holbox [HD-473](https://ct-happyhorizon.atlassian.net/browse/HD-473); Bitbucket `experius/holbox` `feature/HD-473` (pipelines #786/#795/#796); regression agent `bc-6751dd3b-b831-48a9-a271-b6beeeffad3d`; staging `shopdirect.holbox.nl.happyhorizon.dev` + FE `www.holbox.nl.happyhorizon.dev` | Headless GraphQL + Vercel/Fastly (not Hyvä). ES7→8; upstream Experius `execute(): int` / PHP 8.5 PRs (pagenotfound, dblogger, missingtranslations); `Holbox_ProductCustomOptionImages` for 2.4.9 multi-file `Http::isUploaded()`; Aheadworks PDF `imagedestroy()` patch; upload limits ~128M/132M; `bitbucket-pipelines.yml` PHP bump |
