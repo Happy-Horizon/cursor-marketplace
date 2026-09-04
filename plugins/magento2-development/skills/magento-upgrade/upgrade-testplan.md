@@ -275,11 +275,15 @@ Cloud agents and any agent that claims H1/H2 `pass` must attach proof:
 | Account lifecycle recording | `account_register_protected_pages_logout_login.mp4` |
 | Order confirmation still | screenshot of success page showing the order number |
 
-- Save under the agent artifact dir when available (`/opt/cursor/artifacts/…`).
-- Embed in the PR body / agent summary like PR #330: linked video thumbs and
-  `![Order confirmation …](https://cursor.com/artifacts/…)` (or the platform’s equivalent artifact
-  URLs).
+- Save under the agent artifact dir when available (`/opt/cursor/artifacts/…`). Prefer also
+  `jira-attachments/` copies with stable names (see magento-upgrade-testrapport).
+- Embed in the PR body / agent summary with **clickable public URLs** — preferred:
+  `https://cursor.com/agents/<bc-id>/artifacts?path=<url-encoded /opt/cursor/artifacts/…>`;
+  also acceptable: platform `https://cursor.com/artifacts/c/art-…` embeds (PR #330 style).
+  Never bare filenames or bare `/opt/cursor/...` paths alone.
 - Exit report must list artifact URLs. **“E2E pass” without artifacts is invalid** for cloud agents.
+- After Phase H / GraphQL fallback succeeds, complete the Dutch testrapport via
+  [magento-upgrade-testrapport](../magento-upgrade-testrapport/SKILL.md) (HD-473 pattern).
 
 ### H5 — Pre-existing ledger
 
